@@ -1,6 +1,6 @@
 import prisma from "../../config/db";
-
-export async function create(data: { role_name: string; description?: string }) {
+import { CreateRoleInput } from '../../types/role'
+export async function create(data: CreateRoleInput) {
 	const roleName = data.role_name.trim().toLowerCase();
 	const existing = await prisma.role.findUnique({
 		where: { role_name: roleName },
