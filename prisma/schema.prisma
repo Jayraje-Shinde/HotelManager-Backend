@@ -35,4 +35,31 @@ model Category {
       id        Int     @id @default(autoincrement())
       name      String  @unique
       is_liquor Boolean @default(false)
+      items     Item[]
+}
+
+model Unit {
+      id          Int     @id @default(autoincrement())
+      name        String  @unique
+      description String?
+      items       Item[]
+}
+
+model Item {
+      id             Int     @id @default(autoincrement())
+      name           String
+      category_id    Int
+      unit_id        Int
+      selling_price  Float
+      purchase_price Float
+      tax_rate       Float?
+      stock          Float   @default(0)
+      is_available   Boolean @default(true)
+      duty_per_unit  Float? // used only for liquor items
+
+      category Category @relation(fields: [category_id], references: [id])
+      unit     Unit     @relation(fields: [unit_id], references: [id])
+
+      created_at DateTime @default(now())
+      updated_at DateTime @updatedAt
 }
