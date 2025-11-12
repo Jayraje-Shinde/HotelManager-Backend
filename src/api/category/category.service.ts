@@ -24,6 +24,12 @@ export async function remove(id: number) {
 	const category = await prisma.category.findUnique({ where: { id } });
 	if (!category) throw new Error("Did not find Category");
 
+
+	const linkedItems = await prisma.item.findMany({ where: { category_id: id } });
+	if (linkedItems.length > 0) {
+		throw new Error("Cannot delete: This Category is linked to existing items");
+	}
+
 	await prisma.category.delete({ where: { id } });
 	return { message: "Category Deleted Successfully" }
 }

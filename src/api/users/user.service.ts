@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import prisma from "../../config/db";
 import { CreateUserInput } from "../../types/user";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export async function getAll() {
 	return prisma.user.findMany({
