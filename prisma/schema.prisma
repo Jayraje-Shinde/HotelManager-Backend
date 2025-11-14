@@ -21,14 +21,16 @@ model Role {
 }
 
 model User {
-      id            Int      @id @default(autoincrement())
-      name          String
-      email         String?  @unique
-      password_hash String?
-      is_active     Boolean  @default(true)
-      created_at    DateTime @default(now())
-      role_id       Int?
-      role          Role?    @relation(fields: [role_id], references: [id])
+      id             Int             @id @default(autoincrement())
+      name           String
+      email          String?         @unique
+      password_hash  String?
+      is_active      Boolean         @default(true)
+      created_at     DateTime        @default(now())
+      role_id        Int?
+      role           Role?           @relation(fields: [role_id], references: [id])
+      stockMovements StockMovement[]
+      purchases      Purchase[]
 }
 
 model Category {
@@ -60,6 +62,57 @@ model Item {
       category Category @relation(fields: [category_id], references: [id])
       unit     Unit     @relation(fields: [unit_id], references: [id])
 
+      created_at     DateTime        @default(now())
+      updated_at     DateTime        @updatedAt
+      stockMovements StockMovement[]
+      purchaseItems  PurchaseItem[]
+}
+
+model StockMovement {
+      id         Int      @id @default(autoincrement())
+      item_id    Int
+      change_qty Float
+      reason     String
+      ref_type   String? // e.g. 'purchase', 'sale', 'manual', 'wastage'
+      ref_id     Int? // links to sale_id, purchase_id, etc.
+      created_by Int? // user who triggered it
       created_at DateTime @default(now())
-      updated_at DateTime @updatedAt
+
+      item Item  @relation(fields: [item_id], references: [id])
+      user User? @relation(fields: [created_by], references: [id])
+}
+
+model Purchase {
+      id            Int      @id @default(autoincrement())
+      vendor_id     Int
+      total_amount  Float
+      invoice_no    String   @unique
+      purchase_date DateTime
+      created_by    Int?
+
+      vendor Vendor         @relation(fields: [vendor_id], references: [id])
+      items  PurchaseItem[]
+
+      user User? @relation(fields: [created_by], references: [id])
+}
+
+model PurchaseItem {
+      id          Int   @id @default(autoincrement())
+      purchase_id Int
+      item_id     Int
+      quantity    Float
+      price       Float
+
+      purchase Purchase @relation(fields: [purchase_id], references: [id])
+      item     Item     @relation(fields: [item_id], references: [id])
+}
+
+model Vendor {
+      id         Int     @id @default(autoincrement())
+      name       String
+      contact    String?
+      license_no String?
+      type       String? // e.g. "liquor", "grocery", "general"
+
+      purchases Purchase[]
 }
