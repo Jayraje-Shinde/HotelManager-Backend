@@ -11,7 +11,7 @@ export async function recordStockMovement(
 	const item = await prisma.item.findUnique({ where: { id: item_id } });
 	if (!item) throw new Error(`Item with id ${item_id} not found`);
 
-	const newStock = item.stock + change_qty;
+	const newStock = (item.stock ?? 0) + change_qty;
 
 	// Update stock
 	await prisma.item.update({

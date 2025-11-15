@@ -1,9 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// -----------------------------
+// Prisma Generator & Datasource
+// -----------------------------
 generator client {
       provider = "prisma-client-js"
 }
@@ -13,6 +10,45 @@ datasource db {
       url      = env("DATABASE_URL")
 }
 
+// -----------------------------
+// ENUMS
+// -----------------------------
+enum MovementType {
+      PURCHASE
+      SALE
+      BREAKAGE
+      MANUAL_ADJUSTMENT
+      OPEN_BOTTLE
+}
+
+enum BillStatus {
+      OPEN
+      PAID
+      CANCELLED
+}
+
+enum TableState {
+      VACANT
+      OCCUPIED
+      BILLED
+}
+
+enum KOTStatus {
+      OPEN
+      SERVED
+      CANCELLED
+}
+
+enum OpenBottleStatus {
+      OPEN
+      FINISHED
+      BREAKAGE
+      CLOSED
+}
+
+// -----------------------------
+// ROLES & USERS
+// -----------------------------
 model Role {
       id          Int     @id @default(autoincrement())
       role_name   String  @unique
@@ -21,18 +57,24 @@ model Role {
 }
 
 model User {
-      id             Int             @id @default(autoincrement())
-      name           String
-      email          String?         @unique
-      password_hash  String?
-      is_active      Boolean         @default(true)
-      created_at     DateTime        @default(now())
-      role_id        Int?
-      role           Role?           @relation(fields: [role_id], references: [id])
+      id            Int      @id @default(autoincrement())
+      name          String
+      email         String?  @unique
+      password_hash String?
+      is_active     Boolean  @default(true)
+      created_at    DateTime @default(now())
+      role_id       Int?
+      role          Role?    @relation(fields: [role_id], references: [id])
+
       stockMovements StockMovement[]
       purchases      Purchase[]
+      bills          Bill[]
+      kots           KOT[]
 }
 
+// -----------------------------
+// CATEGORY & UNITS
+// -----------------------------
 model Category {
       id        Int     @id @default(autoincrement())
       name      String  @unique
@@ -47,39 +89,103 @@ model Unit {
       items       Item[]
 }
 
+// -----------------------------
+// ITEMS (supports liquor variants)
+// -----------------------------
 model Item {
       id             Int     @id @default(autoincrement())
       name           String
       category_id    Int
       unit_id        Int
+      tax_rate       Float
       selling_price  Float
       purchase_price Float
-      tax_rate       Float?
-      stock          Float   @default(0)
+      stock          Float? // non-liquor only
       is_available   Boolean @default(true)
-      duty_per_unit  Float? // used only for liquor items
+
+      manage_stock  Boolean @default(true)
+      duty_per_unit Float?
+      is_liquor     Boolean @default(false)
+
+      ml_per_unit Int? // parent bottle size in ml
+      variant_ml  Int? // for liquor shots
+      parent_id   Int?
+      is_variant  Boolean? @default(false)
+
+      // optional custom prices
+      price_30ml  Float?
+      price_60ml  Float?
+      price_90ml  Float?
+      price_180ml Float?
+      price_375ml Float?
 
       category Category @relation(fields: [category_id], references: [id])
       unit     Unit     @relation(fields: [unit_id], references: [id])
 
-      created_at     DateTime        @default(now())
-      updated_at     DateTime        @updatedAt
-      stockMovements StockMovement[]
-      purchaseItems  PurchaseItem[]
+      parent   Item?  @relation("LiquorVariants", fields: [parent_id], references: [id])
+      variants Item[] @relation("LiquorVariants")
+
+      bill_items        BillItem[]
+      purchase_items    PurchaseItem[]
+      openLiquorBottles OpenLiquorBottle[]
+      stockMovements    StockMovement[]
+      kotitems          KOTItem[]
+      purchaseBatches   PurchaseBatch[]
+
+      @@index([category_id])
+      @@index([parent_id])
 }
 
+// -----------------------------
+// OPEN LIQUOR BOTTLES
+// -----------------------------
+model OpenLiquorBottle {
+      id              Int              @id @default(autoincrement())
+      item_id         Int
+      ml_remaining    Int
+      opened_at       DateTime         @default(now())
+      closed_at       DateTime?
+      status          OpenBottleStatus @default(OPEN)
+      breakage        Boolean          @default(false)
+      breakage_reason String?
+
+      item             Item              @relation(fields: [item_id], references: [id])
+      liquorShotUsages LiquorShotUsage[]
+
+      @@index([item_id])
+}
+
+// -----------------------------
+// STOCK MOVEMENT
+// -----------------------------
 model StockMovement {
-      id         Int      @id @default(autoincrement())
-      item_id    Int
-      change_qty Float
-      reason     String
-      ref_type   String? // e.g. 'purchase', 'sale', 'manual', 'wastage'
-      ref_id     Int? // links to sale_id, purchase_id, etc.
-      created_by Int? // user who triggered it
-      created_at DateTime @default(now())
+      id            Int          @id @default(autoincrement())
+      item_id       Int
+      change_qty    Float
+      reason        String
+      movement_type MovementType
+      ref_id        Int?
+      created_by    Int?
+      created_at    DateTime     @default(now())
 
       item Item  @relation(fields: [item_id], references: [id])
       user User? @relation(fields: [created_by], references: [id])
+
+      @@index([item_id])
+      @@index([movement_type])
+}
+
+// -----------------------------
+// PURCHASE SECTION
+// -----------------------------
+model Vendor {
+      id         Int     @id @default(autoincrement())
+      name       String
+      contact    String?
+      license_no String?
+      type       String?
+
+      purchases Purchase[]
 }
 
 model Purchase {
@@ -90,10 +196,12 @@ model Purchase {
       purchase_date DateTime
       created_by    Int?
 
-      vendor Vendor         @relation(fields: [vendor_id], references: [id])
-      items  PurchaseItem[]
+      vendor          Vendor          @relation(fields: [vendor_id], references: [id])
+      items           PurchaseItem[]
+      user            User?           @relation(fields: [created_by], references: [id])
+      purchaseBatches PurchaseBatch[]
 
-      user User? @relation(fields: [created_by], references: [id])
+      @@index([vendor_id])
 }
 
 model PurchaseItem {
@@ -107,12 +215,140 @@ model PurchaseItem {
       item     Item     @relation(fields: [item_id], references: [id])
 }
 
-model Vendor {
-      id         Int     @id @default(autoincrement())
-      name       String
-      contact    String?
-      license_no String?
-      type       String? // e.g. "liquor", "grocery", "general"
+model PurchaseBatch {
+      id            Int       @id @default(autoincrement())
+      item_id       Int
+      purchase_id   Int
+      qty_total     Float
+      qty_remaining Float
+      cost_price    Float
+      pack_size     Int
+      ml_per_bottle Int?
+      scheme_qty    Int?      @default(0)
+      batch_number  String?
+      expiry_date   DateTime?
+      is_duty_paid  Boolean   @default(true)
+      created_at    DateTime  @default(now())
 
-      purchases Purchase[]
+      item            Item            @relation(fields: [item_id], references: [id])
+      purchase        Purchase        @relation(fields: [purchase_id], references: [id])
+      billItemBatches BillItemBatch[]
+
+      @@index([item_id])
+      @@index([purchase_id])
+}
+
+// -----------------------------
+// BILLING SECTION
+// -----------------------------
+model Bill {
+      id          Int        @id @default(autoincrement())
+      table_no    String
+      user_id     Int?
+      total       Float      @default(0)
+      discount    Float      @default(0)
+      paymentMode String?
+      bill_date   DateTime   @default(now())
+      status      BillStatus @default(OPEN)
+
+      user          User?         @relation(fields: [user_id], references: [id])
+      items         BillItem[]
+      payments      Payment[]
+      kots          KOT[]
+      tableStatuses TableStatus[]
+
+      @@index([status])
+}
+
+model BillItem {
+      id       Int   @id @default(autoincrement())
+      bill_id  Int
+      item_id  Int
+      quantity Float
+      rate     Float
+      subtotal Float
+
+      bill Bill @relation(fields: [bill_id], references: [id])
+      item Item @relation(fields: [item_id], references: [id])
+
+      batches   BillItemBatch[]
+      shotUsage LiquorShotUsage[]
+}
+
+model BillItemBatch {
+      id                Int      @id @default(autoincrement())
+      bill_item_id      Int
+      purchase_batch_id Int
+      qty_used          Float
+      ml_used           Int?
+      cost_price_at_use Float
+      created_at        DateTime @default(now())
+
+      billItem      BillItem      @relation(fields: [bill_item_id], references: [id])
+      purchaseBatch PurchaseBatch @relation(fields: [purchase_batch_id], references: [id])
+
+      @@index([bill_item_id])
+      @@index([purchase_batch_id])
+}
+
+model LiquorShotUsage {
+      id             Int      @id @default(autoincrement())
+      bill_item_id   Int
+      open_bottle_id Int
+      ml_used        Int
+      used_at        DateTime @default(now())
+
+      billItem   BillItem         @relation(fields: [bill_item_id], references: [id])
+      openBottle OpenLiquorBottle @relation(fields: [open_bottle_id], references: [id])
+
+      @@index([bill_item_id])
+      @@index([open_bottle_id])
+}
+
+// -----------------------------
+// TABLE & KOT
+// -----------------------------
+model TableStatus {
+      id              Int        @id @default(autoincrement())
+      table_no        String     @unique
+      zone            String
+      status          TableState @default(VACANT)
+      current_bill_id Int?
+
+      bill Bill? @relation(fields: [current_bill_id], references: [id])
+
+      @@index([status])
+      @@index([zone])
+}
+
+model KOT {
+      id         Int       @id @default(autoincrement())
+      table_no   String
+      waiter_id  Int?
+      bill_id    Int?
+      kot_no     String
+      status     KOTStatus @default(OPEN)
+      created_at DateTime  @default(now())
+      updated_at DateTime  @default(now())
+
+      waiter User?     @relation(fields: [waiter_id], references: [id])
+      bill   Bill?     @relation(fields: [bill_id], references: [id])
+      items  KOTItem[]
+}
+
+model KOTItem {
+      id       Int     @id @default(autoincrement())
+      kot_id   Int
+      item_id  Int
+      quantity Float
+      note     String?
+
+      kot  KOT  @relation(fields: [kot_id], references: [id])
+      item Item @relation(fields: [item_id], references: [id])
+}
+
+model Payment {
+      id     Int   @id @default(autoincrement())
+      bill   Bill? @relation(fields: [billId], references: [id])
+      billId Int?
 }

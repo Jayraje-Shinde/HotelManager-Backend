@@ -7,6 +7,7 @@ import unitRoutes from './api/unit/unit.route';
 import itemRoutes from './api/item/item.route';
 import stockMovementRoutes from './api/stock_movement/stock_movement.route';
 import vendorRoutes from './api/vendor/vendor.route';
+import purchaseRoutes from './api/purchase/purchase.route';
 
 const app = express();
 app.use(cors());
@@ -21,5 +22,6 @@ app.use("/api/unit", unitRoutes);
 app.use("/api/item", itemRoutes);
 app.use("/api/stockmovement", stockMovementRoutes);
 app.use("/api/vendor", vendorRoutes);
+app.use("/api/purchase", purchaseRoutes);
 
 export default app;

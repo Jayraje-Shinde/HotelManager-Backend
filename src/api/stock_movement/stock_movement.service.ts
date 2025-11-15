@@ -18,7 +18,7 @@ export async function recordMovement(data: Stock_movementType) {
 		}
 	});
 
-	const newStock = item.stock + data.change_qty;
+	const newStock = (item.stock ?? 0) + data.change_qty;
 	await prisma.item.update({
 		where: { id: data.item_id },
 		data: { stock: newStock }
