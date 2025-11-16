@@ -133,6 +133,9 @@ model OpenLiquorBottle {
       breakage        Boolean          @default(false)
       breakage_reason String?
 
+      batch_id      Int?
+      purchaseBatch PurchaseBatch? @relation(fields: [batch_id], references: [id])
+
       item             Item              @relation(fields: [item_id], references: [id])
       liquorShotUsages LiquorShotUsage[]
 
@@ -152,8 +155,10 @@ model StockMovement {
       created_by    Int?
       created_at    DateTime     @default(now())
 
-      item Item  @relation(fields: [item_id], references: [id])
-      user User? @relation(fields: [created_by], references: [id])
+      item            Item           @relation(fields: [item_id], references: [id])
+      user            User?          @relation(fields: [created_by], references: [id])
+      purchaseBatch   PurchaseBatch? @relation(fields: [purchaseBatchId], references: [id])
+      purchaseBatchId Int?
 
       @@index([item_id])
       @@index([movement_type])
@@ -214,9 +219,11 @@ model PurchaseBatch {
       is_duty_paid  Boolean   @default(true)
       created_at    DateTime  @default(now())
 
-      item            Item            @relation(fields: [item_id], references: [id])
-      purchase        Purchase        @relation(fields: [purchase_id], references: [id])
-      billItemBatches BillItemBatch[]
+      item              Item               @relation(fields: [item_id], references: [id])
+      purchase          Purchase           @relation(fields: [purchase_id], references: [id])
+      billItemBatches   BillItemBatch[]
+      stockMovements    StockMovement[]
+      openLiquorBottles OpenLiquorBottle[]
 
       @@index([item_id])
       @@index([purchase_id])

@@ -1,6 +1,5 @@
 import prisma from "../../config/db";
 import { Stock_movementType } from "../../types/stock_movement";
-import { update } from "../users/user.service";
 
 export async function recordMovement(data: Stock_movementType) {
 	const item = await prisma.item.findUnique({ where: { id: data.item_id } });
@@ -12,6 +11,7 @@ export async function recordMovement(data: Stock_movementType) {
 			item_id: data.item_id,
 			change_qty: data.change_qty,
 			reason: data.reason,
+			//@ts-ignore
 			ref_type: data.ref_type ?? null,
 			ref_id: data.ref_id ?? null,
 			created_by: data.created_by ?? null

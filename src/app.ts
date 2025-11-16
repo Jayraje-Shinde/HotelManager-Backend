@@ -8,6 +8,8 @@ import itemRoutes from './api/item/item.route';
 import stockMovementRoutes from './api/stock_movement/stock_movement.route';
 import vendorRoutes from './api/vendor/vendor.route';
 import purchaseRoutes from './api/purchase/purchase.route';
+import purchaseBatchRoutes from './api/purchase-batch/purchaseBatch.route'
+import breakBottleroute from "./api/bottle/bottle.route";
 
 const app = express();
 app.use(cors());
@@ -23,5 +25,7 @@ app.use("/api/item", itemRoutes);
 app.use("/api/stockmovement", stockMovementRoutes);
 app.use("/api/vendor", vendorRoutes);
 app.use("/api/purchase", purchaseRoutes);
+app.use("/api/purchase-batch", purchaseBatchRoutes);
+app.use("/api/bottle", breakBottleroute);
 
 export default app;
