@@ -92,48 +92,32 @@ model Unit {
 // -----------------------------
 // ITEMS (supports liquor variants)
 // -----------------------------
+
 model Item {
-      id             Int     @id @default(autoincrement())
-      name           String
-      category_id    Int
-      unit_id        Int
-      tax_rate       Float
-      selling_price  Float
-      purchase_price Float
-      stock          Float? // non-liquor only
-      is_available   Boolean @default(true)
+      id            Int     @id @default(autoincrement())
+      name          String
+      category_id   Int
+      unit_id       Int
+      tax_rate      Float   @default(0)
+      selling_price Float
+      stock         Float?
+      is_available  Boolean @default(true)
 
-      manage_stock  Boolean @default(true)
-      duty_per_unit Float?
-      is_liquor     Boolean @default(false)
+      manage_stock Boolean @default(true)
+      is_liquor    Boolean @default(false)
 
-      ml_per_unit Int? // parent bottle size in ml
-      variant_ml  Int? // for liquor shots
-      parent_id   Int?
-      is_variant  Boolean? @default(false)
-
-      // optional custom prices
-      price_30ml  Float?
-      price_60ml  Float?
-      price_90ml  Float?
-      price_180ml Float?
-      price_375ml Float?
+      ml_per_unit Int? // Bottle size in ml (2000,1000,750,375,180,90)
+      breakable   Boolean? @default(false)
 
       category Category @relation(fields: [category_id], references: [id])
       unit     Unit     @relation(fields: [unit_id], references: [id])
 
-      parent   Item?  @relation("LiquorVariants", fields: [parent_id], references: [id])
-      variants Item[] @relation("LiquorVariants")
-
       bill_items        BillItem[]
       purchase_items    PurchaseItem[]
-      openLiquorBottles OpenLiquorBottle[]
-      stockMovements    StockMovement[]
-      kotitems          KOTItem[]
       purchaseBatches   PurchaseBatch[]
-
-      @@index([category_id])
-      @@index([parent_id])
+      stockMovements    StockMovement[]
+      openLiquorBottles OpenLiquorBottle[]
+      kotitems          KOTItem[]
 }
 
 // -----------------------------

@@ -1,63 +1,25 @@
 import { Request, Response } from "express";
 import * as itemService from "./item.service";
 
-export async function createItem(req: Request, res: Response) {
+export async function createLiquor(req: Request, res: Response) {
 	try {
-		const {
-			name,
-			category_id,
-			unit_id,
-			tax_rate,
-			selling_price,
-			purchase_price,
-			stock,
-			is_available,
-			manage_stock,
-			duty_per_unit,
-
-			is_liquor,
-			ml_per_unit,
-
-			price_30ml,
-			price_60ml,
-			price_90ml,
-			price_180ml,
-			price_375ml
-		} = req.body;
-
-		if (!name || !category_id || !unit_id) {
-			return res.status(400).json({ error: "name, category_id, unit_id are required" });
-		}
-
-		const item = await itemService.createItem({
-			name,
-			category_id,
-			unit_id,
-			tax_rate,
-			selling_price,
-			purchase_price,
-			stock,
-			is_available,
-			manage_stock,
-			duty_per_unit,
-
-			is_liquor,
-			ml_per_unit,
-
-			price_30ml,
-			price_60ml,
-			price_90ml,
-			price_180ml,
-			price_375ml
-		});
-
-		res.status(201).json(item);
+		const result = await itemService.createLiquorItem(req.body);
+		res.status(201).json(result);
 	} catch (err: any) {
 		res.status(400).json({ error: err.message });
 	}
 }
 
-export async function getAllItems(req: Request, res: Response) {
+export async function createNonLiquor(req: Request, res: Response) {
+	try {
+		const result = await itemService.createNonLiquorItem(req.body);
+		res.status(201).json(result);
+	} catch (err: any) {
+		res.status(400).json({ error: err.message });
+	}
+}
+
+export async function getItems(req: Request, res: Response) {
 	try {
 		const items = await itemService.getAllItems();
 		res.json(items);
@@ -68,9 +30,22 @@ export async function getAllItems(req: Request, res: Response) {
 
 export async function getItem(req: Request, res: Response) {
 	try {
-		const id = parseInt(req.params.id);
-		const item = await itemService.getItem(id);
+		const id = Number(req.params.id);
+		const item = await itemService.getItemById(id);
+
+		if (!item) return res.status(404).json({ error: "Item not found" });
+
 		res.json(item);
+	} catch (err: any) {
+		res.status(500).json({ error: err.message });
+	}
+}
+
+export async function updateItem(req: Request, res: Response) {
+	try {
+		const id = Number(req.params.id);
+		const updated = await itemService.updateItem(id, req.body);
+		res.json(updated);
 	} catch (err: any) {
 		res.status(400).json({ error: err.message });
 	}
@@ -78,7 +53,7 @@ export async function getItem(req: Request, res: Response) {
 
 export async function deleteItem(req: Request, res: Response) {
 	try {
-		const id = parseInt(req.params.id);
+		const id = Number(req.params.id);
 		const result = await itemService.deleteItem(id);
 		res.json(result);
 	} catch (err: any) {

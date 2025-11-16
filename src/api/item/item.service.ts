@@ -1,131 +1,135 @@
 import prisma from "../../config/db";
-import { createLiquorVariants } from "../../util/liquorVariant";
+import {
+	BottleSizeInput,
+	CreateLiquorInput,
+	CreateNonLiquorInput,
+	UpdateItemInput
+} from "./item.types";
 
-interface CreateItemInput {
-	name: string;
-	category_id: number;
-	unit_id: number;
-	tax_rate?: number;
-	selling_price?: number;
-	purchase_price?: number;
-	stock?: number | null;
-	is_available?: boolean;
-	manage_stock?: boolean;
-	duty_per_unit?: number | null;
-
-	// liquor
-	is_liquor?: boolean;
-	ml_per_unit?: number | null;
-
-	// custom variant prices (null = auto generate)
-	price_30ml?: number | null;
-	price_60ml?: number | null;
-	price_90ml?: number | null;
-	price_180ml?: number | null;
-	price_375ml?: number | null;
-}
-
-export async function createItem(data: CreateItemInput) {
-	// validate name
+/**
+ * Create Liquor Items (multiple bottle sizes)
+ */
+export async function createLiquorItem(data: CreateLiquorInput) {
 	const name = data.name.trim();
 
-	// create parent item (dish, raw item, liquor bottle, etc.)
+	if (!data.bottle_sizes || data.bottle_sizes.length === 0) {
+		throw new Error("Bottle sizes required for liquor item");
+	}
+
+	// Create one item PER bottle size where price is provided
+	const itemsToCreate = data.bottle_sizes.filter(b => b.price !== null);
+
+	if (itemsToCreate.length === 0) {
+		throw new Error("At least one bottle size must have price");
+	}
+
+	const createdItems = await prisma.$transaction(async (tx) => {
+		const results: any = [];
+
+		for (const bottle of itemsToCreate) {
+			const itemName = `${name} ${bottle.ml}ml`;
+
+			const item = await tx.item.create({
+				data: {
+					name: itemName,
+					category_id: data.category_id,
+					unit_id: data.unit_id,
+					tax_rate: data.tax_rate,
+					selling_price: bottle.price!,
+					stock: 0,
+					is_available: true,
+					manage_stock: true,
+
+					is_liquor: true,
+					ml_per_unit: bottle.ml,
+					breakable: true
+				}
+			});
+
+			results.push(item);
+		}
+
+		return results;
+	});
+
+	return createdItems;
+}
+
+/**
+ * Create Non-Liquor Item
+ */
+export async function createNonLiquorItem(data: CreateNonLiquorInput) {
+	const name = data.name.trim();
+
 	const item = await prisma.item.create({
 		data: {
 			name,
 			category_id: data.category_id,
 			unit_id: data.unit_id,
-
-			tax_rate: data.tax_rate ?? 0,
-			selling_price: data.selling_price ?? 0,
-			purchase_price: data.purchase_price ?? 0,
-
-			stock: data.manage_stock === false ? null : (data.stock ?? 0),
-
-			is_available: data.is_available ?? true,
-			manage_stock: data.manage_stock ?? true,
-
-			duty_per_unit: data.duty_per_unit ?? null,
-
-			is_liquor: data.is_liquor ?? false,
-			ml_per_unit: data.is_liquor ? data.ml_per_unit ?? null : null,
-			variant_ml: null,
-			parent_id: null,
-
-			// custom variant prices stored only in parent
-			price_30ml: data.price_30ml ?? null,
-			price_60ml: data.price_60ml ?? null,
-			price_90ml: data.price_90ml ?? null,
-			price_180ml: data.price_180ml ?? null,
-			price_375ml: data.price_375ml ?? null
+			tax_rate: data.tax_rate,
+			selling_price: data.selling_price,
+			stock: data.stock ?? 0,
+			manage_stock: false,
+			is_available: true,
+			is_liquor: false
 		}
 	});
-
-	// -------------------------------------------------------
-	// LIQUOR LOGIC: Generate shot/variant items automatically
-	// -------------------------------------------------------
-	if (data.is_liquor) {
-		if (!data.ml_per_unit) {
-			throw new Error("Liquor item must have ml_per_unit (bottle size)");
-		}
-
-		await createLiquorVariants({
-			id: item.id,
-			name: item.name,
-			category_id: item.category_id,
-			unit_id: item.unit_id,
-			purchase_price: item.purchase_price,
-			ml_per_unit: data.ml_per_unit,
-
-			price_30ml: data.price_30ml ?? null,
-			price_60ml: data.price_60ml ?? null,
-			price_90ml: data.price_90ml ?? null,
-			price_180ml: data.price_180ml ?? null,
-			price_375ml: data.price_375ml ?? null
-		});
-	}
 
 	return item;
 }
 
+/**
+ * Get All Items
+ */
 export async function getAllItems() {
 	return prisma.item.findMany({
-		orderBy: { id: "asc" },
-		include: {
-			variants: true,
-			parent: true,
-			category: true,
-			unit: true
-		}
+		orderBy: { id: "asc" }
 	});
 }
 
-export async function getItem(id: number) {
+/**
+ * Get Single Item
+ */
+export async function getItemById(id: number) {
 	return prisma.item.findUnique({
-		where: { id },
-		include: {
-			variants: true,
-			parent: true,
-			category: true,
-			unit: true
-		}
+		where: { id }
 	});
 }
 
-export async function deleteItem(id: number) {
-	const item = await prisma.item.findUnique({
+/**
+ * Update Item
+ */
+export async function updateItem(id: number, data: UpdateItemInput) {
+	const updateData: any = {};
+
+	if (data.name !== undefined) updateData.name = data.name.trim();
+	if (data.tax_rate !== undefined) updateData.tax_rate = data.tax_rate;
+	if (data.selling_price !== undefined) updateData.selling_price = data.selling_price;
+	if (data.stock !== undefined) updateData.stock = data.stock;
+	if (data.is_available !== undefined) updateData.is_available = data.is_available;
+	if (data.manage_stock !== undefined) updateData.manage_stock = data.manage_stock;
+
+	return prisma.item.update({
 		where: { id },
-		include: { variants: true }
+		data: updateData
+	});
+}
+
+/**
+ * Delete item (only if no batches exist)
+ */
+export async function deleteItem(id: number) {
+	const batchExists = await prisma.purchaseBatch.findFirst({
+		where: { item_id: id }
 	});
 
-	if (!item) throw new Error("Item not found");
-
-	// prevent deleting liquor parent while variants exist
-	if (item.variants.length > 0) {
-		throw new Error("Cannot delete this liquor bottle item because variants exist");
+	if (batchExists) {
+		throw new Error("Cannot delete item: linked purchase batches exist");
 	}
 
-	await prisma.item.delete({ where: { id } });
+	await prisma.item.delete({
+		where: { id }
+	});
 
 	return { message: "Item deleted successfully" };
 }

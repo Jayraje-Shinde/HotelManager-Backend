@@ -1,31 +1,32 @@
 import { Request, Response } from "express";
 import * as purchaseService from "./purchase.service";
 
-export async function createPurchase(req: Request, res: Response) {
+export async function createPurchaseHandler(req: Request, res: Response) {
 	try {
-		const { vendor_id, invoice_no, purchase_date, created_by, items } = req.body;
-
-		if (!vendor_id || !invoice_no || !purchase_date || !items)
-			return res.status(400).json({ error: "Missing required fields" });
-
-		const purchase = await purchaseService.createPurchase({
-			vendor_id,
-			invoice_no,
-			purchase_date,
-			created_by,
-			items
-		});
-
-		res.status(201).json(purchase);
+		const payload = req.body;
+		const created = await purchaseService.createPurchase(payload);
+		res.status(201).json(created);
 	} catch (err: any) {
+		console.error("createPurchase error:", err);
 		res.status(400).json({ error: err.message });
 	}
 }
 
-export async function getAllPurchases(req: Request, res: Response) {
+export async function getAllPurchasesHandler(req: Request, res: Response) {
 	try {
-		const purchases = await purchaseService.getAllPurchases();
-		res.json(purchases);
+		const list = await purchaseService.getAllPurchases();
+		res.json(list);
+	} catch (err: any) {
+		res.status(500).json({ error: err.message });
+	}
+}
+
+export async function getPurchaseHandler(req: Request, res: Response) {
+	try {
+		const id = Number(req.params.id);
+		const p = await purchaseService.getPurchaseById(id);
+		if (!p) return res.status(404).json({ error: "Purchase not found" });
+		res.json(p);
 	} catch (err: any) {
 		res.status(500).json({ error: err.message });
 	}
