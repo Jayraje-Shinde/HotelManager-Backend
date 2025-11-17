@@ -24,7 +24,15 @@ enum MovementType {
 enum BillStatus {
       OPEN
       PAID
+      CLOSED
       CANCELLED
+}
+
+enum PaymentMethods {
+      CASH
+      UPI
+      CREDITCARD
+      DEBITCARD
 }
 
 enum TableState {
@@ -35,7 +43,9 @@ enum TableState {
 
 enum KOTStatus {
       OPEN
+      SENT
       SERVED
+      CLOSED
       CANCELLED
 }
 
@@ -155,10 +165,11 @@ model StockMovement {
       created_by    Int?
       created_at    DateTime     @default(now())
 
-      item            Item           @relation(fields: [item_id], references: [id])
-      user            User?          @relation(fields: [created_by], references: [id])
-      purchaseBatch   PurchaseBatch? @relation(fields: [purchaseBatchId], references: [id])
+      item Item  @relation(fields: [item_id], references: [id])
+      user User? @relation(fields: [created_by], references: [id])
+
       purchaseBatchId Int?
+      purchaseBatch   PurchaseBatch? @relation(fields: [purchaseBatchId], references: [id])
 
       @@index([item_id])
       @@index([movement_type])
@@ -284,13 +295,16 @@ model BillItemBatch {
 
 model LiquorShotUsage {
       id             Int      @id @default(autoincrement())
-      bill_item_id   Int
+      bill_item_id   Int?
       open_bottle_id Int
       ml_used        Int
       used_at        DateTime @default(now())
 
-      billItem   BillItem         @relation(fields: [bill_item_id], references: [id])
+      kot_id Int?
+
+      billItem   BillItem?        @relation(fields: [bill_item_id], references: [id])
       openBottle OpenLiquorBottle @relation(fields: [open_bottle_id], references: [id])
+      kot        KOT?             @relation(fields: [kot_id], references: [id])
 
       @@index([bill_item_id])
       @@index([open_bottle_id])
@@ -322,9 +336,10 @@ model KOT {
       created_at DateTime  @default(now())
       updated_at DateTime  @default(now())
 
-      waiter User?     @relation(fields: [waiter_id], references: [id])
-      bill   Bill?     @relation(fields: [bill_id], references: [id])
-      items  KOTItem[]
+      waiter           User?             @relation(fields: [waiter_id], references: [id])
+      bill             Bill?             @relation(fields: [bill_id], references: [id])
+      items            KOTItem[]
+      liquorShotUsages LiquorShotUsage[]
 }
 
 model KOTItem {
@@ -339,7 +354,11 @@ model KOTItem {
 }
 
 model Payment {
-      id     Int   @id @default(autoincrement())
-      bill   Bill? @relation(fields: [billId], references: [id])
-      billId Int?
+      id          Int            @id @default(autoincrement())
+      billId      Int
+      bill        Bill           @relation(fields: [billId], references: [id])
+      method      PaymentMethods @default(CASH)
+      amount      Float
+      referenceNo String?
+      created_at  DateTime       @default(now())
 }

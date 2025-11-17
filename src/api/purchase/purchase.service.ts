@@ -19,7 +19,7 @@ export async function createPurchase(payload: CreatePurchaseInput) {
 	// compute totals from items
 	let computedTotal = 0;
 	for (const it of payload.items) {
-		computedTotal += (it.quantity * it.cost_price);
+		computedTotal += (it.quantity * it.price);
 		// scheme items cost 0 (not added)
 	}
 
@@ -51,7 +51,7 @@ export async function createPurchase(payload: CreatePurchaseInput) {
 					purchase_id: purchase.id,
 					item_id: it.item_id,
 					quantity: it.quantity,
-					price: it.cost_price
+					price: it.price,
 				}
 			});
 			createdItems.push(paidPi);
@@ -63,7 +63,7 @@ export async function createPurchase(payload: CreatePurchaseInput) {
 					purchase_id: purchase.id,
 					qty_total: it.quantity,
 					qty_remaining: it.quantity,
-					cost_price: it.cost_price,
+					cost_price: it.price,
 					pack_size: it.pack_size ?? 1,
 					ml_per_bottle: undefined,
 					batch_number: it.batch_number ?? null,

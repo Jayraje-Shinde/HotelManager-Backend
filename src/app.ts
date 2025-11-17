@@ -10,6 +10,10 @@ import vendorRoutes from './api/vendor/vendor.route';
 import purchaseRoutes from './api/purchase/purchase.route';
 import purchaseBatchRoutes from './api/purchase-batch/purchaseBatch.route'
 import breakBottleroute from "./api/bottle/bottle.route";
+import paymentRoutes from "./api/payment/payment.route";
+import kotrRoutes from './api/kot/kot.route';
+import billingRoutes from './api/billing/billing.route';
+
 
 const app = express();
 app.use(cors());
@@ -27,5 +31,8 @@ app.use("/api/vendor", vendorRoutes);
 app.use("/api/purchase", purchaseRoutes);
 app.use("/api/purchase-batch", purchaseBatchRoutes);
 app.use("/api/bottle", breakBottleroute);
+app.use("/api/billing", billingRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/kot", kotrRoutes);
 
 export default app;

@@ -1,7 +1,7 @@
 export interface PurchaseItemInput {
 	item_id: number;
 	quantity: number;       // paid quantity (units/bottles)
-	cost_price: number;     // per unit cost for paid portion
+	price: number;     // per unit cost for paid portion
 	pack_size?: number | null;
 	scheme_qty?: number;    // free bottles (optional)
 	batch_number?: string | null;
