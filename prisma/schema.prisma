@@ -80,6 +80,7 @@ model User {
       purchases      Purchase[]
       bills          Bill[]
       kots           KOT[]
+      auditLogs      Auditlog[]
 }
 
 // -----------------------------
@@ -361,4 +362,19 @@ model Payment {
       amount      Float
       referenceNo String?
       created_at  DateTime       @default(now())
+}
+
+model Auditlog {
+      id          Int      @id @default(autoincrement())
+      user_id     Int?
+      action      String
+      description String?
+      ip          String?
+      created_at  DateTime @default(now())
+
+      user User? @relation(fields: [user_id], references: [id])
+
+      @@index([user_id])
+      @@index([action])
+      @@index([created_at])
 }

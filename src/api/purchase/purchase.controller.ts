@@ -31,3 +31,18 @@ export async function getPurchaseHandler(req: Request, res: Response) {
 		res.status(500).json({ error: err.message });
 	}
 }
+
+
+export async function deletePurchase(req: Request, res: Response) {
+	try {
+		const id = parseInt(req.params.id);
+		//@ts-ignore
+		const userId = req.user?.id ?? null; // optional
+
+		const result = await purchaseService.deletePurchase(id, userId);
+		res.json(result);
+
+	} catch (err: any) {
+		res.status(400).json({ error: err.message });
+	}
+}

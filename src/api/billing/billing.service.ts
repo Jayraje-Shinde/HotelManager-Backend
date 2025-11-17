@@ -327,3 +327,96 @@ export async function getBill(billId: number) {
 		}
 	});
 }
+
+
+export async function rollbackBill(billId: number) {
+	return prisma.$transaction(async (tx) => {
+
+		const bill = await tx.bill.findUnique({
+			where: { id: billId },
+			include: {
+				items: {
+					include: { batches: true, shotUsage: true }
+				},
+				payments: true
+			}
+		});
+
+		if (!bill) throw new Error("bill_not_found");
+		if (bill.status === "PAID") throw new Error("cannot_rollback_paid_bill");
+
+		// 1) restore shot usages (liquor real-time deductions)
+		for (const item of bill.items) {
+			for (const shot of item.shotUsage) {
+				const bottle = await tx.openLiquorBottle.findUnique({
+					where: { id: shot.open_bottle_id }
+				});
+				if (!bottle) continue;
+
+				await tx.openLiquorBottle.update({
+					where: { id: bottle.id },
+					data: {
+						ml_remaining: bottle.ml_remaining + shot.ml_used,
+						status: "OPEN",
+						closed_at: null
+					}
+				});
+			}
+		}
+
+		await tx.liquorShotUsage.deleteMany({
+			where: { bill_item_id: { in: bill.items.map(x => x.id) } }
+		});
+
+		// 2) restore sealed bottle batches
+		for (const item of bill.items) {
+			for (const batch of item.batches) {
+				await tx.purchaseBatch.update({
+					where: { id: batch.purchase_batch_id },
+					data: {
+						qty_remaining: batch.qty_used +
+							(await tx.purchaseBatch.findUnique({ where: { id: batch.purchase_batch_id } }))!.qty_remaining
+					}
+				});
+			}
+		}
+
+		// 3) delete BillItemBatch
+		await tx.billItemBatch.deleteMany({
+			where: { bill_item_id: { in: bill.items.map(x => x.id) } }
+		});
+
+		// 4) restore non-liquor stock
+		for (const item of bill.items) {
+			const dbItem = await tx.item.findUnique({ where: { id: item.item_id } });
+			if (!dbItem || dbItem.is_liquor || !dbItem.manage_stock) continue;
+
+			await tx.item.update({
+				where: { id: dbItem.id },
+				data: { stock: (dbItem.stock ?? 0) + item.quantity }
+			});
+		}
+
+		// 5) delete stock movements
+		await tx.stockMovement.deleteMany({
+			where: { ref_id: billId, movement_type: "SALE" }
+		});
+
+		// 6) delete bill items
+		await tx.billItem.deleteMany({ where: { bill_id: billId } });
+
+		// 7) delete payments
+		await tx.payment.deleteMany({ where: { billId: billId } });
+
+		// 8) clear table status
+		await tx.tableStatus.updateMany({
+			where: { current_bill_id: billId },
+			data: { status: "VACANT", current_bill_id: null }
+		});
+
+		// 9) delete bill
+		await tx.bill.delete({ where: { id: billId } });
+
+		return { message: "bill_rollback_success" };
+	});
+}

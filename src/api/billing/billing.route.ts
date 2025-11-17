@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createBilling, payBill, getBillById } from "./billing.controller";
+import { createBilling, payBill, getBillById, deleteBill } from "./billing.controller";
 
 const router = Router();
 
@@ -12,4 +12,5 @@ router.post("/:id/pay", payBill);
 // fetch
 router.get("/:id", getBillById);
 
+router.delete("/:id", deleteBill);
 export default router;

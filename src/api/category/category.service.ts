@@ -8,6 +8,7 @@ export async function create(data: CreateCategoryInput) {
 
 	if (!data.name?.trim()) throw new Error("Category name required");
 
+
 	return prisma.category.create({
 		data: {
 			name: categoryName,

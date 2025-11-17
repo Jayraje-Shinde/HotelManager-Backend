@@ -1,5 +1,9 @@
+import { open } from "fs";
 import prisma from "../../config/db";
 import { BreakBottleType } from "../../types/openBottle";
+import { audit } from "../../utils/audit";
+import { AuditEvent } from "../../utils/auditEvents";
+
 
 /**
  * Break a bottle:
@@ -78,6 +82,12 @@ export async function breakBottle(data: BreakBottleType) {
 		};
 	});
 
+	await audit(
+		user_id ?? null,
+		AuditEvent.BOTTLE_BREAK,
+		`Broke Bottle ${batch.id}`
+	);
+
 	return result;
 }
 
@@ -91,7 +101,8 @@ export async function getOpenBottles() {
 
 /** Close bottle manually (rarely used) */
 export async function closeBottle(id: number, breakage = false, reason?: string) {
-	return prisma.openLiquorBottle.update({
+
+	const result = prisma.openLiquorBottle.update({
 		where: { id },
 		data: {
 			status: breakage ? "BREAKAGE" : "CLOSED",
@@ -100,4 +111,8 @@ export async function closeBottle(id: number, breakage = false, reason?: string)
 			closed_at: new Date()
 		}
 	});
+
+
+
+	return result;
 }

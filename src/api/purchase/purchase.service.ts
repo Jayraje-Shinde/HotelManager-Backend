@@ -1,5 +1,7 @@
 import prisma from "../../config/db";
 import { CreatePurchaseInput, PurchaseItemInput } from "../../types/purchase";
+import { AuditEvent } from "../../utils/auditEvents";
+import { audit } from "../../utils/audit";
 
 /**
  * Create a purchase:
@@ -166,6 +168,12 @@ export async function createPurchase(payload: CreatePurchaseInput) {
 		return full;
 	}); // end transaction
 
+	await audit(
+		payload.created_by ?? null,
+		AuditEvent.PURCHASE_CREATE,
+		`Created purchase ${result?.id} invoice=${payload.invoice_no}`
+	);
+
 	return result;
 }
 
@@ -188,3 +196,89 @@ export async function getPurchaseById(id: number) {
 		include: { items: true, purchaseBatches: true, vendor: true, user: true }
 	});
 }
+
+
+
+export async function deletePurchase(purchase_id: number, user_id?: number) {
+	return prisma.$transaction(async (tx) => {
+
+		// 1. Find purchase
+		const purchase = await tx.purchase.findUnique({
+			where: { id: purchase_id },
+			include: {
+				purchaseBatches: true,
+				items: true
+			}
+		});
+
+		if (!purchase) throw new Error("PURCHASE_NOT_FOUND");
+
+		// Extract all batch IDs
+		const batchIds = purchase.purchaseBatches.map(b => b.id);
+
+		// 2. Check if any batch is used in sale (BillItemBatch)
+		const usedCount = await tx.billItemBatch.count({
+			where: { purchase_batch_id: { in: batchIds } }
+		});
+
+		if (usedCount > 0) {
+			throw new Error("PURCHASE_IN_USE_CANNOT_DELETE");
+		}
+
+		// 3. Check if any open liquor bottle exists for these batches
+		const openBottleCount = await tx.openLiquorBottle.count({
+			where: {
+				batch_id: { in: batchIds },
+				status: { in: ["OPEN", "FINISHED"] } // still active
+			}
+		});
+
+		if (openBottleCount > 0) {
+			throw new Error("OPEN_BOTTLES_EXIST_CANNOT_DELETE");
+		}
+
+		// 4. Rollback stock for each batch
+		for (const batch of purchase.purchaseBatches) {
+			const item = await tx.item.findUnique({ where: { id: batch.item_id } });
+
+			if (!item) continue;
+
+			const restoredStock = (item.stock ?? 0) - batch.qty_total;
+
+			if (restoredStock < 0) {
+				throw new Error("STOCK_INCONSISTENCY_ABORT");
+			}
+
+			await tx.item.update({
+				where: { id: item.id },
+				data: { stock: restoredStock }
+			});
+
+			// Delete stock movement logs created for this purchase
+			await tx.stockMovement.deleteMany({
+				where: {
+					purchaseBatchId: batch.id,
+					movement_type: "PURCHASE"
+				}
+			});
+		}
+
+		// 5. Delete all batches
+		await tx.purchaseBatch.deleteMany({
+			where: { purchase_id: purchase_id }
+		});
+
+		// 6. Delete purchase items
+		await tx.purchaseItem.deleteMany({
+			where: { purchase_id: purchase_id }
+		});
+
+		// 7. Delete the purchase itself
+		await tx.purchase.delete({
+			where: { id: purchase_id }
+		});
+
+		return { message: "Purchase deleted and stock rolled back successfully." };
+	});
+}
+

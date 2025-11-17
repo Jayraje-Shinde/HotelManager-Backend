@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as billingService from "./billing.service";
+import prisma from "../../config/db";
 
 export async function createBilling(req: Request, res: Response) {
 	try {
@@ -34,3 +35,14 @@ export async function getBillById(req: Request, res: Response) {
 		return res.status(400).json({ error: err.message ?? err.toString() });
 	}
 }
+
+export async function deleteBill(req: Request, res: Response) {
+	try {
+		const id = parseInt(req.params.id);
+		const result = await billingService.rollbackBill(id);
+		return res.json(result);
+	} catch (err: any) {
+		return res.status(400).json({ error: err.message });
+	}
+}
+

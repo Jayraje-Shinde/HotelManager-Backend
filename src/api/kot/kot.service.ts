@@ -146,39 +146,46 @@ export async function serveKOT(kotId: number) {
  */
 export async function cancelKOT(kotId: number, reason?: string) {
 	return prisma.$transaction(async (tx) => {
-		const kot = await tx.kOT.findUnique({ where: { id: kotId } });
+		const kot = await tx.kOT.findUnique({
+			where: { id: kotId },
+			include: { liquorShotUsages: true, items: true }
+		});
+
 		if (!kot) throw new Error("kot_not_found");
-		if (kot.status === "CANCELLED" || kot.status === "CLOSED") throw new Error("kot_already_finalized");
+		if (kot.status === "CANCELLED" || kot.status === "CLOSED")
+			throw new Error("kot_already_finalized");
 
-		// find shot usages created by this kot
-		const usages = await tx.liquorShotUsage.findMany({ where: { kot_id: kotId } });
-
-		// revert ml for each usage
-		for (const u of usages) {
-			const bottle = await tx.openLiquorBottle.findUnique({ where: { id: u.open_bottle_id } });
+		// 1. rollback shot usages
+		for (const usage of kot.liquorShotUsages) {
+			const bottle = await tx.openLiquorBottle.findUnique({
+				where: { id: usage.open_bottle_id }
+			});
 			if (!bottle) continue;
-			const newMl = (bottle.ml_remaining ?? 0) + u.ml_used;
 
 			await tx.openLiquorBottle.update({
 				where: { id: bottle.id },
 				data: {
-					ml_remaining: newMl,
+					ml_remaining: bottle.ml_remaining + usage.ml_used,
 					status: "OPEN",
 					closed_at: null
 				}
 			});
 		}
 
-		// delete or mark usages (we delete to keep simple)
+		// delete shot usage logs
 		await tx.liquorShotUsage.deleteMany({ where: { kot_id: kotId } });
+
+		// delete kot items
+		await tx.kOTItem.deleteMany({ where: { kot_id: kotId } });
 
 		// mark kot cancelled
 		const updatedKot = await tx.kOT.update({
 			where: { id: kotId },
-			data: { status: "CANCELLED", updated_at: new Date(), /* optionally store reason */ }
+			data: {
+				status: "CANCELLED",
+				updated_at: new Date()
+			}
 		});
-
-		// note: KOT cancellation does not touch bill (bill remains OPEN). Frontend should handle removing items from UI and then adjust bill at finalization.
 
 		return updatedKot;
 	});
