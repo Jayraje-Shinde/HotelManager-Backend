@@ -1,16 +1,18 @@
 import { Router } from "express";
-import { createBilling, payBill, getBillById, deleteBill } from "./billing.controller";
+import {
+	createBillHandler,
+	createBillFromKOTHandler,
+	addPaymentToBillHandler,
+	getBillHandler,
+	rollbackBillHandler
+} from "./billing.controller";
 
 const router = Router();
 
-// First billing attempt: auto-generate bill items from SERVED KOTs and accept initial payment(s).
-router.post("/", createBilling);
+router.post("/", createBillHandler);                 // manual/ad-hoc bill
+router.post("/from-kot", createBillFromKOTHandler);  // consolidate KOT(s) -> bill
+router.post("/:id/pay", addPaymentToBillHandler);    // add payments to an existing bill
+router.get("/:id", getBillHandler);                  // get bill details
+router.delete("/:id", rollbackBillHandler);          // rollback (admin)
 
-// Subsequent payments (partial payments)
-router.post("/:id/pay", payBill);
-
-// fetch
-router.get("/:id", getBillById);
-
-router.delete("/:id", deleteBill);
 export default router;

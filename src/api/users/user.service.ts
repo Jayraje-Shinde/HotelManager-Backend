@@ -1,4 +1,3 @@
-import { existsSync } from "fs";
 import prisma from "../../config/db";
 import { CreateUserInput } from "../../types/user";
 import bcrypt from "bcryptjs";

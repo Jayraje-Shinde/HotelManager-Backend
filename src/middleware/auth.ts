@@ -1,28 +1,22 @@
 import { Request, Response, NextFunction } from "express";
-import prisma from "../config/db";
+import { verifyToken } from "../utils/jwt";
 
-export async function requireRole(allowed: string[]) {
-	return async (req: Request, res: Response, next: NextFunction) => {
-		try {
-			const userId = req.headers["x-user-id"]; // frontend must send this
-			if (!userId) return res.status(401).json({ error: "missing_user_id" });
 
-			const user = await prisma.user.findUnique({
-				where: { id: Number(userId) },
-				include: { role: true }
-			});
+export function auth(req: Request, res: Response, next: NextFunction) {
+	const header = req.headers.authorization;
 
-			if (!user) return res.status(401).json({ error: "invalid_user" });
-			if (!user.role) return res.status(403).json({ error: "user_has_no_role" });
+	if (!header) return res.status(401).json({ error: "NO_TOKEN" });
 
-			if (!allowed.includes(user.role.role_name))
-				return res.status(403).json({ error: "access_denied" });
+	const token = header.split(" ")[1];
+	if (!token) return res.status(401).json({ error: "INVALID_TOKEN" });
 
-			// Attach user for further use
-			(req as any).user = user;
-			next();
-		} catch (err) {
-			res.status(500).json({ error: "auth_error" });
-		}
-	};
+	try {
+
+		const decoded: any = verifyToken;
+		req.user = decoded;
+		next();
+
+	} catch {
+		return res.status(401).json({ error: "TOKEN_INVALID_OR_EXPIRED" });
+	}
 }

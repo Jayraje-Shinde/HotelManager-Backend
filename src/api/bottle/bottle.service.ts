@@ -100,19 +100,60 @@ export async function getOpenBottles() {
 }
 
 /** Close bottle manually (rarely used) */
-export async function closeBottle(id: number, breakage = false, reason?: string) {
+export async function closeBottle(
+	id: number,
+	breakage = false,
+	reason?: string,
+	user_id?: number
+) {
+	const bottle = await prisma.openLiquorBottle.findUnique({ where: { id } });
+	if (!bottle) throw new Error("Bottle not found");
 
-	const result = prisma.openLiquorBottle.update({
+	// Determine new status
+	let newStatus: "FINISHED" | "BREAKAGE" | "CLOSED";
+	if (breakage) {
+		newStatus = "BREAKAGE";
+	} else if (bottle.ml_remaining === 0) {
+		newStatus = "FINISHED";
+	} else {
+		newStatus = "CLOSED";
+	}
+
+	// Update the bottle first
+	const result = await prisma.openLiquorBottle.update({
 		where: { id },
 		data: {
-			status: breakage ? "BREAKAGE" : "CLOSED",
+			status: newStatus,
 			breakage: breakage,
-			breakage_reason: reason ?? null,
+			breakage_reason: breakage ? reason : null,
 			closed_at: new Date()
 		}
 	});
 
+	// Now audit (AFTER success)
+	if (newStatus === "FINISHED") {
+		await audit(
+			user_id ?? null,
+			AuditEvent.BOTTLE_FINISH,
+			`Bottle #${id} marked as finished (0ml remaining)`
+		);
+	}
 
+	if (newStatus === "BREAKAGE") {
+		await audit(
+			user_id ?? null,
+			AuditEvent.BOTTLE_BREAK,
+			`Bottle #${id} marked as broken. Reason: ${reason ?? "Unknown"}`
+		);
+	}
+
+	if (newStatus === "CLOSED") {
+		await audit(
+			user_id ?? null,
+			"BOTTLE_CLOSED",
+			`Bottle #${id} manually closed with ${bottle.ml_remaining}ml remaining`
+		);
+	}
 
 	return result;
 }
