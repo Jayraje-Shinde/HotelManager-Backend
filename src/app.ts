@@ -13,6 +13,7 @@ import breakBottleroute from "./api/bottle/bottle.route";
 import paymentRoutes from "./api/payment/payment.route";
 import kotrRoutes from './api/kot/kot.route';
 import billingRoutes from './api/billing/billing.route';
+import authRoutes from './api/auth/auth.route';
 
 
 const app = express();
@@ -34,5 +35,6 @@ app.use("/api/bottle", breakBottleroute);
 app.use("/api/billing", billingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/kot", kotrRoutes);
+app.use("/api/auth", authRoutes);
 
 export default app;

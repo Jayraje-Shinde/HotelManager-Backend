@@ -26,6 +26,12 @@ export async function create(data: CreateUserInput) {
 		if (existing) throw new Error("User with this email already exists");
 	}
 
+	if (data.username) {
+		const existing = await prisma.user.findUnique({
+			where: { username: data.username },
+		});
+	}
+
 	// 2. Hash password only when provided
 	let hashedPassword: string | null = null;
 	if (data.password && data.password.trim() !== "") {
@@ -39,6 +45,7 @@ export async function create(data: CreateUserInput) {
 			email: data.email ? data.email.toLowerCase() : null,
 			password_hash: hashedPassword,
 			role_id: data.role_id,
+			username: data.username
 		},
 		include: { role: true },
 	});

@@ -3,4 +3,5 @@ export interface CreateUserInput {
 	email: string;
 	password: string;
 	role_id?: number
+	username: string
 }
