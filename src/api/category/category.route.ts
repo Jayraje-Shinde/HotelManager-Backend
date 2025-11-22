@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { getAllCategory, deleteCategory, createCategory, updateCategory } from './category.controller';
+
+import { allowRoles } from "../../middleware/role";
+import { auth } from "../../middleware/auth";
 const router = Router();
 
-router.get("/", getAllCategory);
-router.post("/", createCategory);
-router.put("/:id", updateCategory);
-router.delete("/:id", deleteCategory);
+router.get("/", auth, allowRoles("cashier", "admin"), getAllCategory);
+router.post("/", auth, allowRoles("admin"), createCategory);
+router.put("/:id", auth, allowRoles("admin"), updateCategory);
+router.delete("/:id", auth, allowRoles("admin"), deleteCategory);
 
 export default router;

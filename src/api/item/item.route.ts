@@ -8,22 +8,26 @@ import {
 	deleteItem
 } from "./item.controller";
 
+
+import { allowRoles } from "../../middleware/role";
+import { auth } from "../../middleware/auth";
+
 const router = Router();
 
 // Liquor creation (multiple bottle sizes)
-router.post("/liquor", createLiquor);
+router.post("/liquor", auth, allowRoles("admin"), createLiquor);
 
 // Non-liquor item creation
-router.post("/", createNonLiquor);
+router.post("/", auth, allowRoles("admin"), createNonLiquor);
 
 // Read
-router.get("/", getItems);
-router.get("/:id", getItem);
+router.get("/", auth, allowRoles("admin", "cashier", "waiter"), getItems);
+router.get("/:id", auth, allowRoles("admin", "cashier", "waiter"), getItem);
 
 // Update
-router.put("/:id", updateItem);
+router.put("/:id", auth, allowRoles("admin"), updateItem);
 
 // Delete
-router.delete("/:id", deleteItem);
+router.delete("/:id", auth, allowRoles("admin"), deleteItem);
 
 export default router;
