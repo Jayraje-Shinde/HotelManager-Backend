@@ -14,7 +14,7 @@ import paymentRoutes from "./api/payment/payment.route";
 import kotrRoutes from './api/kot/kot.route';
 import billingRoutes from './api/billing/billing.route';
 import authRoutes from './api/auth/auth.route';
-
+import reportsRoutes from './api/reports/report.route';
 
 const app = express();
 app.use(cors());
@@ -36,5 +36,5 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/kot", kotrRoutes);
 app.use("/api/auth", authRoutes);
-
+app.use("/api/report", reportsRoutes);
 export default app;
