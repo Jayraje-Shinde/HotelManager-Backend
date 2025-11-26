@@ -7,6 +7,8 @@ export async function create(req: Request, res: Response) {
 
 		if (!name) return res.status(400).json({ error: "Vendor name required" });
 
+		if (type == "liquor" && !license_no) return res.status(400).json({ error: "Liquor vendor needs a licence" });
+
 		const vendor = await service.createVendor({
 			name,
 			contact,

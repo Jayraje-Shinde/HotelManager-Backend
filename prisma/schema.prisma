@@ -82,6 +82,7 @@ model User {
       bills          Bill[]
       kots           KOT[]
       auditLogs      Auditlog[]
+      dayClosings    DayClosing[]
 }
 
 // -----------------------------
@@ -124,12 +125,14 @@ model Item {
       category Category @relation(fields: [category_id], references: [id])
       unit     Unit     @relation(fields: [unit_id], references: [id])
 
-      bill_items        BillItem[]
-      purchase_items    PurchaseItem[]
-      purchaseBatches   PurchaseBatch[]
-      stockMovements    StockMovement[]
-      openLiquorBottles OpenLiquorBottle[]
-      kotitems          KOTItem[]
+      bill_items         BillItem[]
+      purchase_items     PurchaseItem[]
+      purchaseBatches    PurchaseBatch[]
+      stockMovements     StockMovement[]
+      openLiquorBottles  OpenLiquorBottle[]
+      kotitems           KOTItem[]
+      dayStockSnapshots  DayStockSnapshot[]
+      dayLiquorSnapshots DayLiquorSnapshot[]
 }
 
 // -----------------------------
@@ -373,9 +376,113 @@ model Auditlog {
       ip          String?
       created_at  DateTime @default(now())
 
-      user User? @relation(fields: [user_id], references: [id])
+      user         User?       @relation(fields: [user_id], references: [id])
+      dayClosing   DayClosing? @relation(fields: [dayClosingId], references: [id])
+      dayClosingId Int?
 
       @@index([user_id])
       @@index([action])
       @@index([created_at])
+}
+
+model DayClosing {
+      id                Int       @id @default(autoincrement())
+      business_date     DateTime  @unique
+      closed_by         Int
+      closed_at         DateTime  @default(now())
+      status            String    @default("CLOSED")
+      note              String?
+      total_sales       Float     @default(0)
+      total_payments    Float     @default(0)
+      total_stock_value Float     @default(0)
+      open_kots_count   Int       @default(0)
+      created_at        DateTime  @default(now())
+      reopen_allowed    Boolean   @default(false)
+      reopen_by         Int?
+      reopen_at         DateTime?
+
+      auditLogs        Auditlog[]
+      salesSnapshots   DaySalesSnapshot[]
+      stockSnapshots   DayStockSnapshot[]
+      paymentSnapshots DayPaymentSnapshot[]
+      liquorSnapshots  DayLiquorSnapshot[]
+      kotSnapshots     DayKOTSnapshot[]
+
+      user User? @relation(fields: [closed_by], references: [id])
+
+      @@index([business_date])
+}
+
+model DaySalesSnapshot {
+      id             Int        @id @default(autoincrement())
+      day_closing_id Int
+      bill_id        Int
+      bill_no        String
+      bill_date      DateTime
+      user_id        Int?
+      table_no       String?
+      total          Float
+      discount       Float
+      status         BillStatus
+      created_at     DateTime   @default(now())
+
+      dayClosing DayClosing @relation(fields: [day_closing_id], references: [id])
+}
+
+model DayPaymentSnapshot {
+      id             Int            @id @default(autoincrement())
+      day_closing_id Int
+      bill_id        Int
+      method         PaymentMethods
+      amount         Float
+      referenceNo    String?
+      created_at     DateTime       @default(now())
+
+      dayClosing DayClosing @relation(fields: [day_closing_id], references: [id])
+}
+
+model DayStockSnapshot {
+      id             Int      @id @default(autoincrement())
+      day_closing_id Int
+      item_id        Int
+      stock_snapshot Float
+      total_value    Float
+      created_at     DateTime @default(now())
+
+      dayClosing DayClosing @relation(fields: [day_closing_id], references: [id])
+      item       Item       @relation(fields: [item_id], references: [id])
+
+      @@index([item_id])
+}
+
+model DayLiquorSnapshot {
+      id                Int      @id @default(autoincrement())
+      day_closing_id    Int
+      item_id           Int
+      opening_bottles   Float
+      purchased_bottles Float
+      broken_bottles    Float
+      sealed_sold       Float
+      shots_ml_sold     Float
+      open_bottles_ml   Float
+      theoretical_ml    Float
+      variance_ml       Float
+      created_at        DateTime @default(now())
+
+      dayClosing DayClosing @relation(fields: [day_closing_id], references: [id])
+      item       Item       @relation(fields: [item_id], references: [id])
+
+      @@index([item_id])
+}
+
+model DayKOTSnapshot {
+      id             Int       @id @default(autoincrement())
+      day_closing_id Int
+      kot_id         Int
+      waiter_id      Int?
+      table_no       String
+      status         KOTStatus
+      created_at     DateTime  @default(now())
+
+      dayClosing DayClosing @relation(fields: [day_closing_id], references: [id])
 }

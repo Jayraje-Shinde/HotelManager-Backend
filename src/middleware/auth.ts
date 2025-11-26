@@ -7,12 +7,18 @@ export function auth(req: Request, res: Response, next: NextFunction) {
 
 	if (!header) return res.status(401).json({ error: "NO_TOKEN" });
 
-	const token = header.split(" ")[1];
-	if (!token) return res.status(401).json({ error: "INVALID_TOKEN" });
 
+	let token;
+	if (header && header.startsWith("Bearer ")) {
+		token = header.split(" ")[1];
+	} else if (header) {
+		token = header;
+	} else {
+		return res.status(401).json({ error: "INVALID_TOKEN" });
+	}
 	try {
 
-		const decoded: any = verifyToken;
+		const decoded: any = verifyToken(token);
 		req.user = decoded;
 		next();
 

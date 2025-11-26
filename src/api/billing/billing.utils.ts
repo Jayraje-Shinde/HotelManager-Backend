@@ -87,9 +87,9 @@ export function aggregateShotUsages(shotUsages: any[]) {
 	>();
 
 	for (const su of shotUsages) {
-		if (!su.openBottle) throw new Error("openBottle_missing_in_shot_usage");
+		if (!su.open_bottle_id) { throw new Error("openBottle_missing_in_shot_usage"); }
 
-		const itemId = su.openBottle.item_id;
+		const itemId = su.open_bottle_id;
 		const ml = su.ml_used;
 		const key = `${itemId}|${ml}`;
 

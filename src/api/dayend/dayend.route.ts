@@ -1,0 +1,29 @@
+import { Router } from "express";
+import { closeDayController, reopenDayController, getDayEndController } from "./dayend.controller";
+import { auth } from "../../middleware/auth";
+import { allowRoles } from "../../middleware/role";
+
+const router = Router();
+
+router.post(
+	"/close",
+	auth,
+	allowRoles("admin", "manager"),
+	closeDayController
+);
+
+router.post(
+	"/reopen",
+	auth,
+	allowRoles("admin"),
+	reopenDayController
+);
+
+router.get(
+	"/:date",
+	auth,
+	allowRoles("admin", "manager", "accountant"),
+	getDayEndController
+);
+
+export default router;

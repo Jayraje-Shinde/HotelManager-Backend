@@ -272,10 +272,12 @@ export async function createBillFromKOT(payload: CreateBillFromKOTInput) {
 		for (const su of kus) allShotUsages.push(su);
 	}
 
+
 	// aggregated sealed items (Map<item_id, qty>)
 	const sealedMap = aggregateSealedItems(allKotItems);
 
 	// aggregated shot usages -> Map key => { item_id, ml_used, count }
+
 	const shotMap = aggregateShotUsages(allShotUsages);
 
 	// Convert maps to item input array
