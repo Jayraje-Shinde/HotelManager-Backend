@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { closeDayController, reopenDayController, getDayEndController } from "./dayend.controller";
+import { closeDayController, reopenDayController, getDayEndController, precheckDayend } from "./dayend.controller";
 import { auth } from "../../middleware/auth";
 import { allowRoles } from "../../middleware/role";
 
@@ -26,4 +26,10 @@ router.get(
 	getDayEndController
 );
 
+router.get(
+	"/precheck",
+	auth,
+	allowRoles("admin", "cashier"),
+	precheckDayend
+);
 export default router;

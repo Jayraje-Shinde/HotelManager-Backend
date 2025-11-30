@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { closeDay, reopenDay, getDayEnd } from "./dayend.service";
+import { closeDay, reopenDay, getDayEnd, getPrecheck } from "./dayend.service";
 
 export async function closeDayController(req: Request, res: Response) {
 	try {
@@ -33,6 +33,17 @@ export async function getDayEndController(req: Request, res: Response) {
 
 		const result = await getDayEnd(date);
 
+		res.status(200).json(result);
+	} catch (err: any) {
+		res.status(400).json({ error: err.message });
+	}
+}
+
+
+export async function precheckDayend(req: Request, res: Response) {
+	try {
+		const business_date = String(req.query.business_date);
+		const result = await getPrecheck(business_date);
 		res.status(200).json(result);
 	} catch (err: any) {
 		res.status(400).json({ error: err.message });
