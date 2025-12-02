@@ -18,6 +18,89 @@ export async function createKOT(payload: any) {
 	if (!payload.items || payload.items.length === 0) throw new Error("empty_kot");
 	const finishedBottleIds: number[] = [];
 
+	// Helper: break a new bottle (uses FIFO PurchaseBatch.qty_remaining > 0)
+	async function breakBottle(tx: Prisma.TransactionClient, itemId: number) {
+		// find item for ml_per_unit
+		const item = await tx.item.findUnique({ where: { id: itemId } });
+		if (!item) throw new Error("item_not_found");
+
+		// find oldest purchase batch with qty_remaining > 0 (FIFO)
+		const batch = await tx.purchaseBatch.findFirst({
+			where: { item_id: itemId, qty_remaining: { gt: 0 } },
+			orderBy: { created_at: "asc" }
+		});
+
+		if (!batch) {
+			const err: any = new Error("OUT_OF_STOCK");
+			err.code = "OUT_OF_STOCK";
+			err.item_id = itemId;
+			throw err;
+		}
+
+		// decrement batch qty_remaining by 1
+		await tx.purchaseBatch.update({
+			where: { id: batch.id },
+			data: { qty_remaining: { decrement: 1 } }
+		});
+
+		// create stock movement for breaking bottle (record we consumed 1 sealed bottle into open bottle)
+		await tx.stockMovement.create({
+			data: {
+				item_id: itemId,
+				change_qty: -1,
+				reason: `Break bottle (auto) during KOT`,
+				movement_type: "OPEN_BOTTLE",
+				ref_id: null,
+				created_by: payload.waiter_id ?? null
+			}
+		});
+
+		// create the open bottle with ml_per_unit initial ml
+		const mlPerUnit = item.ml_per_unit ?? 0;
+		const ob = await tx.openLiquorBottle.create({
+			data: {
+				item_id: itemId,
+				ml_remaining: mlPerUnit,
+				opened_at: new Date(),
+				status: "OPEN",
+				breakage: false,
+				batch_id: batch.id
+			}
+		});
+
+		return ob;
+	}
+
+	// Helper: deduct ml from open bottle and record LiquorShotUsage; returns whether bottle finished (true/false)
+	async function deductFromBottle(tx: Prisma.TransactionClient, bottleId: number, mlToUse: number, kotId: number) {
+		const bottle = await tx.openLiquorBottle.findUnique({ where: { id: bottleId } });
+		if (!bottle) throw new Error("open_bottle_not_found");
+
+		const use = Math.min(bottle.ml_remaining, mlToUse);
+		const newMl = bottle.ml_remaining - use;
+
+		await tx.openLiquorBottle.update({
+			where: { id: bottleId },
+			data: {
+				ml_remaining: newMl,
+				status: newMl === 0 ? "FINISHED" : bottle.status,
+				closed_at: newMl === 0 ? new Date() : null
+			}
+		});
+
+		await tx.liquorShotUsage.create({
+			data: {
+				bill_item_id: null,
+				open_bottle_id: bottleId,
+				kot_id: kotId,
+				ml_used: use,
+				used_at: new Date()
+			}
+		});
+
+		return { used: use, finished: newMl === 0 };
+	}
+
 	const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
 		const count = await tx.kOT.count({ where: { table_no: payload.table_no } });
 		const kot_no = `${payload.table_no}-KOT-${count + 1}`;
@@ -60,51 +143,32 @@ export async function createKOT(payload: any) {
 				}
 			});
 
+			// liquor shot handling
 			if (item.is_liquor && it.shot_ml) {
-				const mlNeeded = (it.quantity ?? 1) * it.shot_ml;
-				const open = await tx.openLiquorBottle.findFirst({
-					where: { item_id: item.id, status: "OPEN", ml_remaining: { gt: 0 } },
-					orderBy: { opened_at: "asc" }
-				});
+				let remainingNeeded = (it.quantity ?? 1) * it.shot_ml;
 
-				if (!open) {
-					const err: any = new Error("PROMPT_BREAK_BOTTLE");
-					err.code = "PROMPT_BREAK_BOTTLE";
-					err.item_id = item.id;
-					throw err;
-				}
+				// loop until all ml satisfied (handles multi-bottle consumption)
+				while (remainingNeeded > 0) {
+					// find oldest open bottle with > 0 ml
+					let openBottle = await tx.openLiquorBottle.findFirst({
+						where: { item_id: item.id, status: "OPEN", ml_remaining: { gt: 0 } },
+						orderBy: { opened_at: "asc" }
+					});
 
-				if (open.ml_remaining < mlNeeded) {
-					const err: any = new Error("PROMPT_BREAK_BOTTLE");
-					err.code = "PROMPT_BREAK_BOTTLE";
-					err.item_id = item.id;
-					err.open_bottle_id = open.id;
-					err.ml_remaining = open.ml_remaining;
-					err.remaining_ml_needed = mlNeeded - open.ml_remaining;
-					throw err;
-				}
-
-				const newMl = open.ml_remaining - mlNeeded;
-				await tx.openLiquorBottle.update({
-					where: { id: open.id },
-					data: {
-						ml_remaining: newMl,
-						status: newMl === 0 ? "FINISHED" : open.status,
-						closed_at: newMl === 0 ? new Date() : null
+					// if none open, break a new bottle (will throw if out of stock)
+					if (!openBottle) {
+						openBottle = await breakBottle(tx, item.id);
 					}
-				});
 
-				await tx.liquorShotUsage.create({
-					data: {
-						bill_item_id: null,
-						open_bottle_id: open.id,
-						kot_id: kot.id,
-						ml_used: mlNeeded,
-						used_at: new Date()
+					// deduct as much as possible from this bottle
+					const { used, finished } = await deductFromBottle(tx, openBottle.id, remainingNeeded, kot.id);
+
+					remainingNeeded -= used;
+
+					if (finished) {
+						finishedBottleIds.push(openBottle.id);
 					}
-				});
-
-				if (newMl === 0) finishedBottleIds.push(open.id);
+				}
 			}
 		}
 
@@ -118,22 +182,9 @@ export async function createKOT(payload: any) {
 	});
 
 	// audit finished bottles after tx
-	if (Array.isArray((result as any).kot) || true) {
-		// use closure finishedBottleIds
-		// (they were collected above; audit them here)
-	}
-	// audit finished bottles
-	// (we mutated finishedBottleIds inside tx closure; now audit)
-	// if none, skip
-	// safe try/catch for audit
 	try {
-		// if finishedBottleIds exists and has entries
-		// In case of TS closure concerns, ignore if empty
-		// (this keeps behaviour consistent)
-		// @ts-ignore
-		if (Array.isArray((finishedBottleIds as any)) && (finishedBottleIds as any).length > 0) {
-			// @ts-ignore
-			for (const b of (finishedBottleIds as any)) {
+		if (Array.isArray(finishedBottleIds) && finishedBottleIds.length > 0) {
+			for (const b of finishedBottleIds) {
 				try {
 					await audit(payload.waiter_id ?? null, AuditEvent.BOTTLE_FINISH, `Bottle #${b} finished during KOT`);
 				} catch (e) {
@@ -147,6 +198,7 @@ export async function createKOT(payload: any) {
 
 	return result;
 }
+
 
 export async function sendKOT(kotId: number) {
 	const kot = await prisma.kOT.findUnique({ where: { id: kotId } });
