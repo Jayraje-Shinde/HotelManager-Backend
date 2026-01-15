@@ -22,7 +22,7 @@ app.use(cors());
 app.use(express.json());
 
 // routes
-app.get("/check", function (req, res) { res.send("") });
+app.get("/check", function (req, res) { res.send({ "status": "ok" }) });
 app.use("/api/role", roleRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/category", categoryRoutes);
