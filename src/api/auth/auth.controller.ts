@@ -19,9 +19,41 @@ export async function login(req: Request, res: Response) {
 			role_id: user.role_id,
 			role_name: user.role?.role_name
 		});
-
-		return res.json({ token, user });
+		const res_user = {
+			id : user.id,
+			username : user.username,
+			role : user.role?.role_name
+		};
+			
+		res.cookie("auth_token", token, {
+	httpOnly: true,
+	secure: false,          // MUST be false on http
+	sameSite: "lax",        // IMPORTANT
+	maxAge: 24 * 60 * 60 * 1000,
+	path: "/"
+});
+		return res.json({ token, res_user });
 	} catch (err: any) {
 		return res.status(500).json({ error: err.message });
 	}
+}
+
+export async function logout(req: Request, res: Response) {
+	try {
+		
+			res.clearCookie("auth_token", {
+	httpOnly: true,
+	sameSite: "strict",
+	secure: process.env.NODE_ENV === "production"
+});
+		}
+	 catch (err: any) {
+		return res.status(500).json({ error: err.message });
+	}
+}
+
+export async function me(req:Request, res:Response){
+		return res.status(200).json({
+		user: req.user
+	});
 }

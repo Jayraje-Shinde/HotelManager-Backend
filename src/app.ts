@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+
 import roleRoutes from './api/roles/roles.route';
 import userRoutes from './api/users/user.route';
 import categoryRoutes from './api/category/category.route';
@@ -18,8 +20,9 @@ import reportsRoutes from './api/reports/report.route';
 import dayendRoutes from './api/dayend/dayend.route';
 
 const app = express();
-app.use(cors());
+app.use( cors({ origin: "http://localhost:5173", credentials: true }) );
 app.use(express.json());
+app.use(cookieParser());
 
 // routes
 app.get("/check", function (req, res) { res.send({ "status": "ok" }) });
@@ -39,4 +42,5 @@ app.use("/api/kot", kotrRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/report", reportsRoutes);
 app.use('/api/dayend', dayendRoutes);
+
 export default app;
