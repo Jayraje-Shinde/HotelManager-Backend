@@ -40,14 +40,15 @@ export async function login(req: Request, res: Response) {
 
 export async function logout(req: Request, res: Response) {
 	try {
-		
-			res.clearCookie("auth_token", {
-	httpOnly: true,
-	sameSite: "strict",
-	secure: process.env.NODE_ENV === "production"
-});
-		}
-	 catch (err: any) {
+		res.clearCookie("auth_token", {
+			httpOnly: true,
+			sameSite: "lax", // MUST match login
+			secure: process.env.NODE_ENV === "production",
+			path: "/"        // MUST match login
+		});
+
+		return res.status(200).json({ message: "Logged out" });
+	} catch (err: any) {
 		return res.status(500).json({ error: err.message });
 	}
 }
