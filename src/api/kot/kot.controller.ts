@@ -1,63 +1,36 @@
-// src/api/kot/kot.controller.ts
 import { Request, Response } from "express";
-import * as kotService from "./kot.service";
+import * as service from "./kot.service";
 
-export async function createKOTHandler(req: Request, res: Response) {
-	try {
-		const payload = req.body;
-		const r = await kotService.createKOT(payload);
-		res.status(201).json(r);
-	} catch (err: any) {
-		if (err.code === "PROMPT_BREAK_BOTTLE") return res.status(409).json({ error: "PROMPT_BREAK_BOTTLE", details: err });
-		res.status(400).json({ error: err.message });
-	}
+export async function create(req: Request, res: Response) {
+  try {
+    res.status(201).json(await service.createKOT(req.body));
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 }
 
-export async function sendKOTHandler(req: Request, res: Response) {
-	try {
-		const kotId = parseInt(req.params.id);
-		const r = await kotService.sendKOT(kotId);
-		res.json(r);
-	} catch (err: any) {
-		res.status(400).json({ error: err.message });
-	}
+export async function addItem(req: Request, res: Response) {
+  try {
+    res.status(201).json(
+      await service.addItemToKOT(Number(req.params.id), req.body)
+    );
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 }
 
-export async function serveKOTHandler(req: Request, res: Response) {
-	try {
-		const kotId = parseInt(req.params.id);
-		const r = await kotService.serveKOT(kotId);
-		res.json(r);
-	} catch (err: any) {
-		res.status(400).json({ error: err.message });
-	}
+export async function serve(req: Request, res: Response) {
+  try {
+    res.json(await service.serveKOT(Number(req.params.id)));
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 }
 
-export async function closeKOTHandler(req: Request, res: Response) {
-	try {
-		const kotId = parseInt(req.params.id);
-		const r = await kotService.closeKOT(kotId);
-		res.json(r);
-	} catch (err: any) {
-		res.status(400).json({ error: err.message });
-	}
-}
-
-export async function cancelKOTHandler(req: Request, res: Response) {
-	try {
-		const kotId = parseInt(req.params.id);
-		const r = await kotService.cancelKOT(kotId);
-		res.json(r);
-	} catch (err: any) {
-		res.status(400).json({ error: err.message });
-	}
-}
-
-export async function getAllKOTsHandler(req: Request, res: Response) {
-	try {
-		const r = await kotService.getAll();
-		res.json(r);
-	} catch (err: any) {
-		res.status(400).json({ error: err.message });
-	}
+export async function close(req: Request, res: Response) {
+  try {
+    res.json(await service.closeKOT(Number(req.params.id)));
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 }

@@ -41,6 +41,12 @@ enum TableState {
       BILLED
 }
 
+enum SaleMode {
+  BOTTLE
+  SHOT
+}
+
+
 enum KOTStatus {
       OPEN
       SENT
@@ -120,8 +126,7 @@ model Item {
       is_liquor    Boolean @default(false)
 
       ml_per_unit Int? // Bottle size in ml (2000,1000,750,375,180,90)
-      breakable   Boolean? @default(false)
-
+	
       category Category @relation(fields: [category_id], references: [id])
       unit     Unit     @relation(fields: [unit_id], references: [id])
 
@@ -348,15 +353,18 @@ model KOT {
 }
 
 model KOTItem {
-      id       Int     @id @default(autoincrement())
-      kot_id   Int
-      item_id  Int
-      quantity Float
-      note     String?
+  id           Int       @id @default(autoincrement())
+  kot_id       Int
+  item_id      Int
+  quantity     Float
+  sale_mode    SaleMode?    // Only used for liquor
+  ml_per_shot  Int?         // Required if sale_mode = SHOT
+  note         String?
 
-      kot  KOT  @relation(fields: [kot_id], references: [id])
-      item Item @relation(fields: [item_id], references: [id])
+  kot  KOT  @relation(fields: [kot_id], references: [id])
+  item Item @relation(fields: [item_id], references: [id])
 }
+
 
 model Payment {
       id          Int            @id @default(autoincrement())
