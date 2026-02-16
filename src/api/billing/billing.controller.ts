@@ -28,3 +28,16 @@ export async function getopenbills(req: Request, res: Response) {
 		res.status(400).json({ error: e.message });
 	}
 }
+
+export async function createBill(req: Request, res: Response) {
+  try {
+    const { table_no } = req.body;
+
+    const bill = await service.createBill(table_no);
+
+    return res.status(201).json(bill);
+
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+}

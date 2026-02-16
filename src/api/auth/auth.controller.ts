@@ -17,7 +17,9 @@ export async function login(req: Request, res: Response) {
 		const token = signToken({
 			id: user.id,
 			role_id: user.role_id,
-			role_name: user.role?.role_name
+			role_name: user.role?.role_name,
+			username : user.username,
+			name:user.name
 		});
 		const res_user = {
 			id : user.id,

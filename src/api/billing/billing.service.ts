@@ -88,3 +88,45 @@ export async function getAllBills(){
   }
 });
 }
+
+export async function createBill(tableNo: string) {
+
+  if (!tableNo) throw new Error("table_required");
+
+  // Check if already open bill exists
+  const existing = await prisma.bill.findFirst({
+    where: {
+      table_no: tableNo,
+      status: "OPEN"
+    }
+  });
+
+  if (existing) return existing;
+
+  const bill = await prisma.bill.create({
+    data: {
+      table_no: tableNo,
+      status: "OPEN",
+      total: 0,
+      discount: 0
+    }
+  });
+
+  // Mark table occupied
+  await prisma.tableStatus.upsert({
+    where: { table_no: tableNo },
+    update: {
+      status: "OCCUPIED",
+      current_bill_id: bill.id
+    },
+    create: {
+      table_no: tableNo,
+      zone: "",
+      status: "OCCUPIED",
+      current_bill_id: bill.id
+    }
+  });
+
+  return bill;
+}
+
