@@ -5,7 +5,8 @@ import {
 	getItems,
 	getItem,
 	updateItem,
-	deleteItem
+	deleteItem,
+	getItembyCategory
 } from "./item.controller";
 
 
@@ -23,6 +24,8 @@ router.post("/", auth, allowRoles("admin"), createNonLiquor);
 // Read
 router.get("/", auth, allowRoles("admin", "cashier", "waiter"), getItems);
 router.get("/:id", auth, allowRoles("admin", "cashier", "waiter"), getItem);
+router.get("/category/:id", auth, allowRoles("admin", "cashier", "waiter"), getItembyCategory);
+
 
 // Update
 router.put("/:id", auth, allowRoles("admin"), updateItem);

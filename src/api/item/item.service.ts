@@ -1,3 +1,4 @@
+import { resourceUsage } from "process";
 import prisma from "../../config/db";
 import {
 	BottleSizeInput,
@@ -41,8 +42,7 @@ export async function createLiquorItem(data: CreateLiquorInput) {
 					manage_stock: true,
 
 					is_liquor: true,
-					ml_per_unit: bottle.ml,
-					breakable: true
+					ml_per_unit: bottle.ml
 				}
 			});
 
@@ -132,4 +132,13 @@ export async function deleteItem(id: number) {
 	});
 
 	return { message: "Item deleted successfully" };
+}
+
+export async function getItemByCategory(id : number) {
+	const result = await prisma.item.findMany({where : {
+		category_id : id
+	}}) ;
+
+	return result;
+
 }

@@ -60,3 +60,25 @@ export async function deleteItem(req: Request, res: Response) {
 		res.status(400).json({ error: err.message });
 	}
 }
+
+export async function getItembyCategory(req: Request, res: Response) {
+  try {
+    const categoryId = Number(req.params.id);
+
+    // Validate ID
+    if (isNaN(categoryId)) {
+      return res.status(400).json({
+        error: "Invalid category ID"
+      });
+    }
+
+    const result = await itemService.getItemByCategory(categoryId);
+
+    res.json(result);
+
+  } catch (err: any) {
+    res.status(500).json({
+      error: err.message
+    });
+  }
+}

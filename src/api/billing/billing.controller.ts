@@ -41,3 +41,29 @@ export async function createBill(req: Request, res: Response) {
     return res.status(400).json({ error: err.message });
   }
 }
+
+export async function getBillByID(req: Request, res: Response) {
+  try {
+    const billid  = Number(req.params.billid);
+
+    const bill = await service.findBillByID(billid);
+
+    return res.status(201).json(bill);
+
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+}
+
+export async function assignWaiter(req: Request, res: Response) {
+  try {
+    const billID  = Number(req.body.billID);
+	const waiterID = Number(req.body.waiterID);
+    const bill = await service.assignWaiterTobill(billID,waiterID);
+
+    return res.status(201).json(bill);
+
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message });
+  }
+}

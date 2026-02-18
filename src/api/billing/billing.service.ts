@@ -130,3 +130,23 @@ export async function createBill(tableNo: string) {
   return bill;
 }
 
+export async function findBillByID(billid : number){
+	const bill = await prisma.bill.findUnique({where : {
+		id : billid
+	},
+include : {
+	items : true
+}})
+	return bill;
+}
+
+export async function assignWaiterTobill(billid : number, waiterID : number){
+	const assigned = await prisma.bill.update({
+		where : {id : billid},
+		data : {
+			user_id : waiterID
+		}
+	});
+	return assigned;
+}
+
