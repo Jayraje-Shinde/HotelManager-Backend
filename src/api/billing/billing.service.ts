@@ -1,4 +1,3 @@
-import { open } from "fs";
 import prisma from "../../config/db";
 import { Prisma } from "@prisma/client";
 
@@ -135,7 +134,11 @@ export async function findBillByID(billid : number){
 		id : billid
 	},
 include : {
-	items : true
+	items : {
+		include : {
+			item : true
+		}
+	}
 }})
 	return bill;
 }

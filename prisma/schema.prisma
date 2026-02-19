@@ -122,10 +122,12 @@ model Item {
       stock         Float?
       is_available  Boolean @default(true)
 
+	excise_rate Int? //MRP of bottles
       manage_stock Boolean @default(true)
       is_liquor    Boolean @default(false)
 
       ml_per_unit Int? // Bottle size in ml (2000,1000,750,375,180,90)
+	peg_price_per_ml Float?
 	
       category Category @relation(fields: [category_id], references: [id])
       unit     Unit     @relation(fields: [unit_id], references: [id])
@@ -279,6 +281,10 @@ model BillItem {
       quantity Float
       rate     Float
       subtotal Float
+
+	sale_mode    SaleMode?
+ml_per_shot  Int?
+
 
       bill Bill @relation(fields: [bill_id], references: [id])
       item Item @relation(fields: [item_id], references: [id])

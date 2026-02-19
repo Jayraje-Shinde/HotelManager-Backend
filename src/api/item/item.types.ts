@@ -8,6 +8,8 @@ export interface CreateLiquorInput {
 	category_id: number;
 	unit_id: number;
 	tax_rate: number;
+	peg_price_per_ml : number;
+	excise_rate : number;
 	bottle_sizes: BottleSizeInput[];  // [{ml:750, price:600}, ...]
 }
 

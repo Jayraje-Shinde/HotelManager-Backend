@@ -38,6 +38,8 @@ export async function createLiquorItem(data: CreateLiquorInput) {
 					tax_rate: data.tax_rate,
 					selling_price: bottle.price!,
 					stock: 0,
+					excise_rate : data.excise_rate,
+					peg_price_per_ml : data.peg_price_per_ml,
 					is_available: true,
 					manage_stock: true,
 
