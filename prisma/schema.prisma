@@ -77,6 +77,7 @@ model User {
       name          String
       username      String   @unique
       email         String?  @unique
+	waitercode	String? @unique
       password_hash String?
       is_active     Boolean  @default(true)
       created_at    DateTime @default(now())
@@ -114,6 +115,7 @@ model Unit {
 
 model Item {
       id            Int     @id @default(autoincrement())
+	code 		String?   @unique
       name          String
       category_id   Int
       unit_id       Int

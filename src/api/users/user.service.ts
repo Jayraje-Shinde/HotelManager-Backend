@@ -2,8 +2,16 @@ import prisma from "../../config/db";
 import { CreateUserInput } from "../../types/user";
 import bcrypt from "bcryptjs";
 
+
 export async function getAll() {
 	return prisma.user.findMany({
+		include: { role: true },
+		orderBy: { id: "asc" },
+	});
+}
+export async function getAllWaiter() {
+	return prisma.user.findMany({
+		where : {role_id : 2},
 		include: { role: true },
 		orderBy: { id: "asc" },
 	});
