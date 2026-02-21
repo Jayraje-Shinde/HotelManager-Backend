@@ -2,7 +2,7 @@ import prisma from "../../config/db";
 import { Prisma } from "@prisma/client";
 
 /* ============================================================
-   CREATE KOT
+	CREATE KOT
 ============================================================ */
 export async function createKOT(payload: {
 	table_no: string;
@@ -23,9 +23,24 @@ export async function createKOT(payload: {
 		}
 	});
 }
+export async function getKOTbyBillid(
+	id: number
+) {
+	if (!id) throw new Error("Bill ID REQUIRED");
+
+	const res = await prisma.kOT.findMany(
+		{
+			where: 
+			{
+				bill_id : id
+			}
+		});
+
+	return res;
+}
 
 /* ============================================================
-   ADD ITEM TO KOT
+	ADD ITEM TO KOT
 ============================================================ */
 export async function addItemToKOT(
 	kotId: number,
@@ -66,7 +81,7 @@ export async function addItemToKOT(
 }
 
 /* ============================================================
-   SERVE
+	SERVE
 ============================================================ */
 export async function serveKOT(kotId: number) {
 	return prisma.kOT.update({
@@ -76,7 +91,7 @@ export async function serveKOT(kotId: number) {
 }
 
 /* ============================================================
-   CLOSE KOT (REAL BAR MODE)
+	CLOSE KOT (REAL BAR MODE)
 ============================================================ */
 export async function closeKOT(kotId: number) {
 	return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -143,7 +158,7 @@ export async function closeKOT(kotId: number) {
 			});
 
 			/* -----------------------------------------------
-			   NON LIQUOR
+				NON LIQUOR
 			-----------------------------------------------*/
 			if (!item.is_liquor && item.manage_stock) {
 
@@ -161,7 +176,7 @@ export async function closeKOT(kotId: number) {
 			}
 
 			/* -----------------------------------------------
-			   LIQUOR SALE
+				LIQUOR SALE
 			-----------------------------------------------*/
 			if (item.is_liquor) {
 
@@ -223,7 +238,7 @@ export async function closeKOT(kotId: number) {
 }
 
 /* ============================================================
-   SEALED BOTTLE SALE
+	SEALED BOTTLE SALE
 ============================================================ */
 async function sellSealedBottle(
 	tx: Prisma.TransactionClient,
@@ -273,7 +288,7 @@ async function sellSealedBottle(
 }
 
 /* ============================================================
-   SHOT CONSUMPTION
+	SHOT CONSUMPTION
 ============================================================ */
 async function consumeShot(
 	tx: Prisma.TransactionClient,
@@ -331,7 +346,7 @@ async function consumeShot(
 }
 
 /* ============================================================
-   INTERNAL BREAK (AUTO FOR SHOT ONLY)
+	INTERNAL BREAK (AUTO FOR SHOT ONLY)
 ============================================================ */
 async function breakBottleInternal(
 	tx: Prisma.TransactionClient,

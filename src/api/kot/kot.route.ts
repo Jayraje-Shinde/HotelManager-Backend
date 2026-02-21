@@ -4,6 +4,7 @@ import { auth } from "../../middleware/auth";
 const router = Router();
 
 router.post("/",auth, ctrl.create);
+router.get("/", auth, ctrl.getKOTbyBillid);
 
 router.post("/:id/items",auth, ctrl.addItem);
 router.post("/:id/serve",auth, ctrl.serve);

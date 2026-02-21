@@ -34,3 +34,11 @@ export async function close(req: Request, res: Response) {
     res.status(400).json({ error: e.message });
   }
 }
+
+export async function getKOTbyBillid(req: Request, res: Response) {
+  try {
+    res.json(await service.getKOTbyBillid(Number(req.body.bill_id)));
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+}
