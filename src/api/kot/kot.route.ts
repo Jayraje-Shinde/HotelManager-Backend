@@ -10,4 +10,10 @@ router.post("/:id/items",auth, ctrl.addItem);
 router.post("/:id/serve",auth, ctrl.serve);
 router.post("/:id/close",auth, ctrl.close);
 
+
+//updateing and deleted items from open KOT
+
+router.put("/:id/items",auth,ctrl.updateQTYofItem);
+router.delete("/:id/items", auth,ctrl.deleteItem);
+
 export default router;

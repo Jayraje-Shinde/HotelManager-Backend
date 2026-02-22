@@ -33,6 +33,9 @@ export async function getKOTbyBillid(
 			where: 
 			{
 				bill_id : id
+			},
+			include : {
+				items:true
 			}
 		});
 
@@ -236,6 +239,74 @@ export async function closeKOT(kotId: number) {
 		return { billId: bill.id };
 	});
 }
+
+/* ============================================================
+	Delete Item From KOT
+============================================================ */
+
+export async function deleteItemFromKOT(
+	kotId: number,
+	payload: {
+		kot_item_id: number;
+	}
+) {
+	const kot = await prisma.kOT.findUnique({ where: { id: kotId } });
+	if (!kot) throw new Error("kot_not_found");
+	if (kot.status !== "OPEN") throw new Error("kot_not_editable");
+
+	const item = await prisma.kOTItem.findUnique({
+		where: { id: payload.kot_item_id }
+	});
+
+	if (!item) throw new Error("item_not_found");
+
+	return prisma.kOTItem.delete({
+		where : {
+			id : payload.kot_item_id,
+			kot_id : kotId
+		}
+	});
+}
+
+
+
+
+/* ============================================================
+	Update Item QTY
+============================================================ */
+export async function updateQtyOfIteminKOT(
+	kotId: number,
+	payload: {
+		kot_item_id: number;
+		quantity_to_update : number
+	}
+) {
+	const kot = await prisma.kOT.findUnique({ where: { id: kotId } });
+	if (!kot) throw new Error("kot_not_found");
+	if (kot.status !== "OPEN") throw new Error("kot_not_editable");
+
+	const item = await prisma.kOTItem.findUnique({
+		where: { id: payload.kot_item_id }
+	});
+
+	if (!item) throw new Error("item_not_found");
+
+
+
+	if((item.quantity + payload.quantity_to_update) == 0) return deleteItemFromKOT(kotId, {kot_item_id : item.id});
+	if((item.quantity + payload.quantity_to_update) < 0) throw new Error("Cannot Go Below Zero");
+
+	return prisma.kOTItem.update({
+		data : {
+		quantity : payload.quantity_to_update + item.quantity
+		},
+		where : {
+			id : payload.kot_item_id,
+			kot_id : kotId
+		}
+	});
+}
+
 
 /* ============================================================
 	SEALED BOTTLE SALE

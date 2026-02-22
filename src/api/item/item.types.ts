@@ -7,6 +7,7 @@ export interface CreateLiquorInput {
 	name: string;
 	category_id: number;
 	unit_id: number;
+	code : string;
 	tax_rate: number;
 	peg_price_per_ml : number;
 	excise_rate : number;
@@ -17,6 +18,7 @@ export interface CreateNonLiquorInput {
 	name: string;
 	category_id: number;
 	unit_id: number;
+	code : string;
 	tax_rate: number;
 	selling_price: number;
 	stock?: number;

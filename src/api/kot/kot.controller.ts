@@ -19,6 +19,28 @@ export async function addItem(req: Request, res: Response) {
   }
 }
 
+export async function deleteItem(req: Request, res: Response) {
+  try {
+    res.status(201).json(
+      await service.deleteItemFromKOT(Number(req.params.id), req.body)
+    );
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+
+export async function updateQTYofItem(req: Request, res: Response) {
+  try {
+    res.status(201).json(
+      await service.updateQtyOfIteminKOT(Number(req.params.id), req.body)
+    );
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+
 export async function serve(req: Request, res: Response) {
   try {
     res.json(await service.serveKOT(Number(req.params.id)));
@@ -37,7 +59,8 @@ export async function close(req: Request, res: Response) {
 
 export async function getKOTbyBillid(req: Request, res: Response) {
   try {
-    res.json(await service.getKOTbyBillid(Number(req.body.bill_id)));
+		const {bill_id} = req.query;
+    res.json(await service.getKOTbyBillid(Number(bill_id)));
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
