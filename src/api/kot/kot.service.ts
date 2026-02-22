@@ -28,16 +28,22 @@ export async function getKOTbyBillid(
 ) {
 	if (!id) throw new Error("Bill ID REQUIRED");
 
-	const res = await prisma.kOT.findMany(
-		{
-			where: 
-			{
-				bill_id : id
-			},
-			include : {
-				items:true
-			}
-		});
+	const res = await prisma.kOT.findMany({
+  where: {
+    bill_id: id
+  },
+  include: {
+    items: {
+      include: {
+        item: {
+          select: {
+            name: true
+          }
+        }
+      }
+    }
+  }
+});
 
 	return res;
 }
