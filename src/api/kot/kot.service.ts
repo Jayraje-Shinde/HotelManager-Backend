@@ -14,6 +14,25 @@ export async function createKOT(payload: {
 		where: { table_no: payload.table_no }
 	});
 
+	const existing_bill = await prisma.bill.findFirst({
+		where : {
+			table_no : payload.table_no,
+			status : "OPEN"
+		}
+	});
+
+	if(existing_bill){
+		return prisma.kOT.create({
+		data: {
+			table_no: payload.table_no,
+			waiter_id: payload.waiter_id ?? null,
+			bill_id : existing_bill.id,
+			kot_no: `${payload.table_no}-KOT-${count + 1}`,
+			status: "OPEN"
+		}
+	});
+	}
+
 	return prisma.kOT.create({
 		data: {
 			table_no: payload.table_no,
@@ -23,27 +42,29 @@ export async function createKOT(payload: {
 		}
 	});
 }
+
+
 export async function getKOTbyBillid(
 	id: number
 ) {
 	if (!id) throw new Error("Bill ID REQUIRED");
 
 	const res = await prisma.kOT.findMany({
-  where: {
-    bill_id: id
-  },
-  include: {
-    items: {
-      include: {
-        item: {
-          select: {
-            name: true
-          }
-        }
-      }
-    }
-  }
-});
+		where: {
+			bill_id: id
+		},
+		include: {
+			items: {
+				include: {
+					item: {
+						select: {
+							name: true
+						}
+					}
+				}
+			}
+		}
+	});
 
 	return res;
 }
@@ -267,9 +288,9 @@ export async function deleteItemFromKOT(
 	if (!item) throw new Error("item_not_found");
 
 	return prisma.kOTItem.delete({
-		where : {
-			id : payload.kot_item_id,
-			kot_id : kotId
+		where: {
+			id: payload.kot_item_id,
+			kot_id: kotId
 		}
 	});
 }
@@ -284,7 +305,7 @@ export async function updateQtyOfIteminKOT(
 	kotId: number,
 	payload: {
 		kot_item_id: number;
-		quantity_to_update : number
+		quantity_to_update: number
 	}
 ) {
 	const kot = await prisma.kOT.findUnique({ where: { id: kotId } });
@@ -299,16 +320,16 @@ export async function updateQtyOfIteminKOT(
 
 
 
-	if((item.quantity + payload.quantity_to_update) == 0) return deleteItemFromKOT(kotId, {kot_item_id : item.id});
-	if((item.quantity + payload.quantity_to_update) < 0) throw new Error("Cannot Go Below Zero");
+	if ((item.quantity + payload.quantity_to_update) == 0) return deleteItemFromKOT(kotId, { kot_item_id: item.id });
+	if ((item.quantity + payload.quantity_to_update) < 0) throw new Error("Cannot Go Below Zero");
 
 	return prisma.kOTItem.update({
-		data : {
-		quantity : payload.quantity_to_update + item.quantity
+		data: {
+			quantity: payload.quantity_to_update + item.quantity
 		},
-		where : {
-			id : payload.kot_item_id,
-			kot_id : kotId
+		where: {
+			id: payload.kot_item_id,
+			kot_id: kotId
 		}
 	});
 }
