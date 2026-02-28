@@ -99,6 +99,25 @@ export async function addItemToKOT(
 			throw new Error("ml_per_shot_required");
 	}
 
+	// Check if same item already exists in this KOT
+	// For liquor: match on item_id + sale_mode + ml_per_shot (a BOTTLE and SHOT of same item are different entries)
+	// For non-liquor: match on item_id only
+	const existingKOTItem = await prisma.kOTItem.findFirst({
+		where: {
+			kot_id: kotId,
+			item_id: payload.item_id,
+			sale_mode: payload.sale_mode ?? null,
+			ml_per_shot: payload.ml_per_shot ?? null
+		}
+	});
+
+	if (existingKOTItem) {
+		return prisma.kOTItem.update({
+			where: { id: existingKOTItem.id },
+			data: { quantity: existingKOTItem.quantity + payload.quantity }
+		});
+	}
+
 	return prisma.kOTItem.create({
 		data: {
 			kot_id: kotId,
@@ -182,8 +201,8 @@ export async function closeKOT(kotId: number) {
 					quantity: qty,
 					rate,
 					subtotal,
-					sale_mode: ki.sale_mode ?? null,
-					ml_per_shot: ki.ml_per_shot ?? null
+					sale_mode: item.is_liquor ? (ki.sale_mode ?? null) : null,
+					ml_per_shot: item.is_liquor ? (ki.ml_per_shot ?? null) : null
 				}
 			});
 
