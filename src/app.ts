@@ -19,7 +19,12 @@ import authRoutes from './api/auth/auth.route';
 import reportsRoutes from './api/reports/report.route';
 import dayendRoutes from './api/dayend/dayend.route';
 
+//testing middleware just for dev
+import { requestLogger } from "./middleware/logger";
+
 const app = express();
+
+app.use(requestLogger);
 app.use( cors({ origin: "http://localhost:5173", credentials: true }) );
 app.use(express.json());
 app.use(cookieParser());

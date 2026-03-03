@@ -5,6 +5,7 @@ import { auth } from "../../middleware/auth";
 const router = Router();
 
 router.get("/", auth, ctrl.getopenbills);
+router.get("/all", auth, ctrl.getAllbills);
 router.get("/:billid", auth, ctrl.getBillByID);
 router.post("/:id/close",auth, ctrl.closeBill);
 router.post("/:id/pay",auth, ctrl.pay);

@@ -58,7 +58,8 @@ export async function getKOTbyBillid(
 				include: {
 					item: {
 						select: {
-							name: true
+							name: true,
+							is_liquor : true
 						}
 					}
 				}

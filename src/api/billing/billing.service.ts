@@ -78,11 +78,22 @@ export async function addPaymentToBill(
 	});
 }
 
-export async function getAllBills() {
+export async function getAllOpenBills() {
 	return prisma.bill.findMany({
 		where: {
 			status: {
 				in: ["CLOSED", "OPEN"]
+			}
+		}
+	});
+}
+export async function getAllBills() {
+	return prisma.bill.findMany({
+		include : {
+			user : {
+				select : {
+					name : true
+				}
 			}
 		}
 	});
