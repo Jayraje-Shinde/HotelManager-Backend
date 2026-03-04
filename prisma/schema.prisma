@@ -26,6 +26,7 @@ enum BillStatus {
    PAID
    CLOSED
    CANCELLED
+   CREDIT
 }
 
 enum PaymentMethods {
@@ -33,6 +34,14 @@ enum PaymentMethods {
    UPI
    CREDITCARD
    DEBITCARD
+   BANK_TRANSFER
+   CHEQUE
+}
+
+enum PurchasePaymentStatus {
+   PAID
+   CREDIT
+   PARTIAL
 }
 
 enum TableState {
@@ -66,7 +75,7 @@ enum OpenBottleStatus {
 // -----------------------------
 model Role {
    id          Int     @id @default(autoincrement())
-   role_name   String  @unique
+   name        String  @unique
    description String?
    users       User[]
 }
@@ -83,12 +92,13 @@ model User {
    role_id       Int?
    role          Role?    @relation(fields: [role_id], references: [id])
 
-   stockMovements StockMovement[]
-   purchases      Purchase[]
-   bills          Bill[]
-   kots           KOT[]
-   auditLogs      Auditlog[]
-   dayClosings    DayClosing[]
+   stockMovements   StockMovement[]
+   purchases        Purchase[]
+   bills            Bill[]
+   kots             KOT[]
+   auditLogs        Auditlog[]
+   dayClosings      DayClosing[]
+   purchasePayments PurchasePayment[]
 }
 
 // -----------------------------
@@ -109,9 +119,8 @@ model Unit {
 }
 
 // -----------------------------
-// ITEMS (supports liquor variants)
+// ITEMS
 // -----------------------------
-
 model Item {
    id            Int     @id @default(autoincrement())
    code          String? @unique
@@ -122,12 +131,11 @@ model Item {
    selling_price Float
    stock         Float?
    is_available  Boolean @default(true)
+   manage_stock  Boolean @default(true)
+   is_liquor     Boolean @default(false)
 
-   excise_rate  Int? //MRP of bottles
-   manage_stock Boolean @default(true)
-   is_liquor    Boolean @default(false)
-
-   ml_per_unit      Int? // Bottle size in ml (2000,1000,750,375,180,90)
+   excise_rate      Int?
+   ml_per_unit      Int?
    peg_price_per_ml Float?
 
    category Category @relation(fields: [category_id], references: [id])
@@ -155,11 +163,10 @@ model OpenLiquorBottle {
    status          OpenBottleStatus @default(OPEN)
    breakage        Boolean          @default(false)
    breakage_reason String?
+   batch_id        Int?
 
-   batch_id      Int?
-   purchaseBatch PurchaseBatch? @relation(fields: [batch_id], references: [id])
-
-   item             Item              @relation(fields: [item_id], references: [id])
+   purchaseBatch    PurchaseBatch?  @relation(fields: [batch_id], references: [id])
+   item             Item            @relation(fields: [item_id], references: [id])
    liquorShotUsages LiquorShotUsage[]
 
    @@index([item_id])
@@ -169,27 +176,26 @@ model OpenLiquorBottle {
 // STOCK MOVEMENT
 // -----------------------------
 model StockMovement {
-   id            Int          @id @default(autoincrement())
-   item_id       Int
-   change_qty    Float
-   reason        String
-   movement_type MovementType
-   ref_id        Int?
-   created_by    Int?
-   created_at    DateTime     @default(now())
-
-   item Item  @relation(fields: [item_id], references: [id])
-   user User? @relation(fields: [created_by], references: [id])
-
+   id              Int          @id @default(autoincrement())
+   item_id         Int
+   change_qty      Float
+   reason          String
+   movement_type   MovementType
+   ref_id          Int?
+   created_by      Int?
+   created_at      DateTime     @default(now())
    purchaseBatchId Int?
-   purchaseBatch   PurchaseBatch? @relation(fields: [purchaseBatchId], references: [id])
+
+   item          Item           @relation(fields: [item_id], references: [id])
+   user          User?          @relation(fields: [created_by], references: [id])
+   purchaseBatch PurchaseBatch? @relation(fields: [purchaseBatchId], references: [id])
 
    @@index([item_id])
    @@index([movement_type])
 }
 
 // -----------------------------
-// PURCHASE SECTION
+// VENDORS & PURCHASES
 // -----------------------------
 model Vendor {
    id         Int     @id @default(autoincrement())
@@ -202,19 +208,23 @@ model Vendor {
 }
 
 model Purchase {
-   id            Int      @id @default(autoincrement())
-   vendor_id     Int
-   total_amount  Float
-   invoice_no    String   @unique
-   purchase_date DateTime
-   created_by    Int?
+   id             Int                   @id @default(autoincrement())
+   vendor_id      Int
+   total_amount   Float
+   amount_paid    Float                 @default(0)
+   payment_status PurchasePaymentStatus @default(PAID)
+   invoice_no     String                @unique
+   purchase_date  DateTime
+   created_by     Int?
 
-   vendor          Vendor          @relation(fields: [vendor_id], references: [id])
-   items           PurchaseItem[]
-   user            User?           @relation(fields: [created_by], references: [id])
-   purchaseBatches PurchaseBatch[]
+   vendor           Vendor            @relation(fields: [vendor_id], references: [id])
+   user             User?             @relation(fields: [created_by], references: [id])
+   items            PurchaseItem[]
+   purchaseBatches  PurchaseBatch[]
+   purchasePayments PurchasePayment[]
 
    @@index([vendor_id])
+   @@index([payment_status])
 }
 
 model PurchaseItem {
@@ -253,36 +263,70 @@ model PurchaseBatch {
    @@index([purchase_id])
 }
 
+// Tracks individual payments made against a purchase (vendor credit settlement)
+model PurchasePayment {
+   id          Int            @id @default(autoincrement())
+   purchase_id Int
+   amount      Float
+   method      PaymentMethods @default(CASH)
+   note        String?
+   reference   String?
+   created_at  DateTime       @default(now())
+   created_by  Int?
+
+   purchase Purchase @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+   user     User?    @relation(fields: [created_by], references: [id], onDelete: SetNull)
+
+   @@index([purchase_id])
+}
+
 // -----------------------------
-// BILLING SECTION
+// CUSTOMERS
+// -----------------------------
+model Customer {
+   id           Int     @id @default(autoincrement())
+   name         String
+   phone        String?
+   address      String?
+   credit_limit Float?  // optional max udhar allowed
+
+   created_at DateTime @default(now())
+   bills      Bill[]
+
+   @@index([phone])
+}
+
+// -----------------------------
+// BILLING
 // -----------------------------
 model Bill {
    id          Int        @id @default(autoincrement())
    table_no    String
    user_id     Int?
+   customer_id Int?
    total       Float      @default(0)
    discount    Float      @default(0)
-   paymentMode String?
    bill_date   DateTime   @default(now())
    status      BillStatus @default(OPEN)
 
    user          User?         @relation(fields: [user_id], references: [id])
+   customer      Customer?     @relation(fields: [customer_id], references: [id])
    items         BillItem[]
    payments      Payment[]
    kots          KOT[]
    tableStatuses TableStatus[]
 
    @@index([status])
+   @@index([customer_id])
 }
 
 model BillItem {
-   id       Int   @id @default(autoincrement())
-   bill_id  Int
-   item_id  Int
-   quantity Float
-   rate     Float
-   subtotal Float
-
+   id          Int       @id @default(autoincrement())
+   bill_id     Int
+   item_id     Int
+   quantity    Float
+   rate        Float
+   subtotal    Float
    sale_mode   SaleMode?
    ml_per_shot Int?
 
@@ -315,8 +359,7 @@ model LiquorShotUsage {
    open_bottle_id Int
    ml_used        Int
    used_at        DateTime @default(now())
-
-   kot_id Int?
+   kot_id         Int?
 
    billItem   BillItem?        @relation(fields: [bill_item_id], references: [id])
    openBottle OpenLiquorBottle @relation(fields: [open_bottle_id], references: [id])
@@ -324,6 +367,20 @@ model LiquorShotUsage {
 
    @@index([bill_item_id])
    @@index([open_bottle_id])
+}
+
+model Payment {
+   id          Int            @id @default(autoincrement())
+   billId      Int
+   method      PaymentMethods @default(CASH)
+   amount      Float
+   referenceNo String?
+   note        String?
+   created_at  DateTime       @default(now())
+
+   bill Bill @relation(fields: [billId], references: [id])
+
+   @@index([billId])
 }
 
 // -----------------------------
@@ -363,41 +420,37 @@ model KOTItem {
    kot_id      Int
    item_id     Int
    quantity    Float
-   sale_mode   SaleMode? // Only used for liquor
-   ml_per_shot Int? // Required if sale_mode = SHOT
+   sale_mode   SaleMode?
+   ml_per_shot Int?
    note        String?
 
    kot  KOT  @relation(fields: [kot_id], references: [id])
    item Item @relation(fields: [item_id], references: [id])
 }
 
-model Payment {
-   id          Int            @id @default(autoincrement())
-   billId      Int
-   bill        Bill           @relation(fields: [billId], references: [id])
-   method      PaymentMethods @default(CASH)
-   amount      Float
-   referenceNo String?
-   created_at  DateTime       @default(now())
-}
-
+// -----------------------------
+// AUDIT
+// -----------------------------
 model Auditlog {
-   id          Int      @id @default(autoincrement())
-   user_id     Int?
-   action      String
-   description String?
-   ip          String?
-   created_at  DateTime @default(now())
-
-   user         User?       @relation(fields: [user_id], references: [id])
-   dayClosing   DayClosing? @relation(fields: [dayClosingId], references: [id])
+   id           Int      @id @default(autoincrement())
+   user_id      Int?
+   action       String
+   description  String?
+   ip           String?
+   created_at   DateTime @default(now())
    dayClosingId Int?
+
+   user       User?       @relation(fields: [user_id], references: [id])
+   dayClosing DayClosing? @relation(fields: [dayClosingId], references: [id])
 
    @@index([user_id])
    @@index([action])
    @@index([created_at])
 }
 
+// -----------------------------
+// DAY-END SNAPSHOTS
+// -----------------------------
 model DayClosing {
    id                Int       @id @default(autoincrement())
    business_date     DateTime  @unique
@@ -414,14 +467,13 @@ model DayClosing {
    reopen_by         Int?
    reopen_at         DateTime?
 
+   user             User?                @relation(fields: [closed_by], references: [id])
    auditLogs        Auditlog[]
    salesSnapshots   DaySalesSnapshot[]
    stockSnapshots   DayStockSnapshot[]
    paymentSnapshots DayPaymentSnapshot[]
    liquorSnapshots  DayLiquorSnapshot[]
    kotSnapshots     DayKOTSnapshot[]
-
-   user User? @relation(fields: [closed_by], references: [id])
 
    @@index([business_date])
 }

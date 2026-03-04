@@ -18,6 +18,8 @@ import billingRoutes from './api/billing/billing.route';
 import authRoutes from './api/auth/auth.route';
 import reportsRoutes from './api/reports/report.route';
 import dayendRoutes from './api/dayend/dayend.route';
+import customerRouter from "./api/customer/customer.route";
+
 
 //testing middleware just for dev
 import { requestLogger } from "./middleware/logger";
@@ -47,5 +49,6 @@ app.use("/api/kots", kotrRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/report", reportsRoutes);
 app.use('/api/dayend', dayendRoutes);
+app.use("/api/customer", customerRouter);
 
 export default app;

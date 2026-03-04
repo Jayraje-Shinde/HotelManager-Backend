@@ -19,17 +19,18 @@ router.post(
 	reopenDayController
 );
 
-router.get(
-	"/:date",
-	auth,
-	allowRoles("admin", "manager", "accountant"),
-	getDayEndController
-);
-
+// precheck MUST come before /:date — otherwise Express matches "precheck" as the date param
 router.get(
 	"/precheck",
 	auth,
 	allowRoles("admin", "cashier"),
 	precheckDayend
+);
+
+router.get(
+	"/:date",
+	auth,
+	allowRoles("admin", "manager", "accountant"),
+	getDayEndController
 );
 export default router;

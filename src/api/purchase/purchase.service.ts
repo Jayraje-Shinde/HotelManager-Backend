@@ -3,282 +3,296 @@ import { CreatePurchaseInput, PurchaseItemInput } from "../../types/purchase";
 import { AuditEvent } from "../../utils/auditEvents";
 import { audit } from "../../utils/audit";
 
-/**
- * Create a purchase:
- * - create Purchase
- * - for each item: create PurchaseItem, PurchaseBatch (paid)
- * - if scheme_qty > 0 -> create separate PurchaseItem (scheme) & separate PurchaseBatch (cost 0)
- * - update item.stock (if manage_stock true)
- * - create StockMovement entries (movement_type = PURCHASE)
- *
- * Returns created purchase with batches/items.
- */
+/* ============================================================
+   CREATE PURCHASE
+============================================================ */
 export async function createPurchase(payload: CreatePurchaseInput) {
 	if (!payload.items || payload.items.length === 0) {
 		throw new Error("Purchase must contain at least one item");
 	}
 
-	// compute totals from items
 	let computedTotal = 0;
 	for (const it of payload.items) {
-		computedTotal += (it.quantity * it.price);
-		// scheme items cost 0 (not added)
+		computedTotal += it.quantity * it.price;
 	}
+
+	const finalTotal = payload.total_amount ?? computedTotal;
+	const amountPaid = payload.amount_paid ?? finalTotal; // default: fully paid
+	const amountDue  = finalTotal - amountPaid;
+
+	// Determine payment status
+	let paymentStatus: "PAID" | "CREDIT" | "PARTIAL";
+	if (amountPaid <= 0)              paymentStatus = "CREDIT";
+	else if (amountDue <= 0.01)       paymentStatus = "PAID";
+	else                              paymentStatus = "PARTIAL";
 
 	const purchaseDate = payload.purchase_date ? new Date(payload.purchase_date) : new Date();
 
-
 	const invoice = await prisma.purchase.findUnique({ where: { invoice_no: payload.invoice_no } });
 	if (invoice) throw new Error("invoice already exists");
+
 	const result = await prisma.$transaction(async (tx) => {
-		// create Purchase (temporarily total_amount = computedTotal or provided)
 		const purchase = await tx.purchase.create({
 			data: {
-				vendor_id: payload.vendor_id,
-				invoice_no: payload.invoice_no,
-				purchase_date: purchaseDate,
-				total_amount: payload.total_amount ?? computedTotal,
-				created_by: payload.created_by ?? null
+				vendor_id:      payload.vendor_id,
+				invoice_no:     payload.invoice_no,
+				purchase_date:  purchaseDate,
+				total_amount:   finalTotal,
+				amount_paid:    amountPaid,
+				payment_status: paymentStatus,
+				created_by:     payload.created_by ?? null
 			}
 		});
 
-		// For collecting created batches to return
+		// If any amount was paid upfront, record it as a PurchasePayment
+		if (amountPaid > 0) {
+			await tx.purchasePayment.create({
+				data: {
+					purchase_id: purchase.id,
+					amount:      amountPaid,
+					method:      payload.payment_method ?? "CASH",
+					note:        "Initial payment on purchase",
+					created_by:  payload.created_by ?? null
+				}
+			});
+		}
+
 		const createdBatches: any[] = [];
-		const createdItems: any[] = [];
+		const createdItems:   any[] = [];
 
 		for (const it of payload.items) {
-			// create the paid PurchaseItem row
 			const paidPi = await tx.purchaseItem.create({
 				data: {
 					purchase_id: purchase.id,
-					item_id: it.item_id,
-					quantity: it.quantity,
-					price: it.price,
+					item_id:     it.item_id,
+					quantity:    it.quantity,
+					price:       it.price
 				}
 			});
 			createdItems.push(paidPi);
 
-			// create paid PurchaseBatch
 			const paidBatch = await tx.purchaseBatch.create({
 				data: {
-					item_id: it.item_id,
-					purchase_id: purchase.id,
-					qty_total: it.quantity,
+					item_id:       it.item_id,
+					purchase_id:   purchase.id,
+					qty_total:     it.quantity,
 					qty_remaining: it.quantity,
-					cost_price: it.price,
-					pack_size: it.pack_size ?? 1,
-					ml_per_bottle: undefined,
-					batch_number: it.batch_number ?? null,
-					expiry_date: it.expiry_date ? new Date(it.expiry_date) : null,
-					created_at: new Date()
+					cost_price:    it.price,
+					pack_size:     it.pack_size ?? 1,
+					batch_number:  it.batch_number ?? null,
+					expiry_date:   it.expiry_date ? new Date(it.expiry_date) : null,
+					created_at:    new Date()
 				}
 			});
 			createdBatches.push(paidBatch);
 
-			// Update item stock if manage_stock true (increase by paid quantity)
 			const item = await tx.item.findUnique({ where: { id: it.item_id } });
 			if (!item) throw new Error(`Item ${it.item_id} not found`);
 
 			if (item.manage_stock) {
-				// current stock may be null for some items; treat null as 0
-				const newStock = (item.stock ?? 0) + it.quantity + (it.scheme_qty ?? 0);
 				await tx.item.update({
 					where: { id: it.item_id },
-					data: { stock: newStock }
+					data:  { stock: (item.stock ?? 0) + it.quantity + (it.scheme_qty ?? 0) }
 				});
 			}
 
-			// Create StockMovement for paid qty
 			await tx.stockMovement.create({
 				data: {
-					item_id: it.item_id,
-					change_qty: it.quantity,
-					reason: `Purchase ${purchase.invoice_no}`,
+					item_id:       it.item_id,
+					change_qty:    it.quantity,
+					reason:        `Purchase ${purchase.invoice_no}`,
 					movement_type: "PURCHASE",
-					ref_id: purchase.id,
-					created_by: payload.created_by ?? null,
-					created_at: new Date()
+					ref_id:        purchase.id,
+					created_by:    payload.created_by ?? null,
+					created_at:    new Date()
 				}
 			});
 
-			// If scheme_qty exists and > 0 -> create separate PurchaseItem and PurchaseBatch with cost_price = 0
 			const freeQty = it.scheme_qty ?? 0;
 			if (freeQty > 0) {
 				const freePi = await tx.purchaseItem.create({
 					data: {
 						purchase_id: purchase.id,
-						item_id: it.item_id,
-						quantity: freeQty,
-						price: 0
+						item_id:     it.item_id,
+						quantity:    freeQty,
+						price:       0
 					}
 				});
 				createdItems.push(freePi);
 
 				const freeBatch = await tx.purchaseBatch.create({
 					data: {
-						item_id: it.item_id,
-						purchase_id: purchase.id,
-						qty_total: freeQty,
+						item_id:       it.item_id,
+						purchase_id:   purchase.id,
+						qty_total:     freeQty,
 						qty_remaining: freeQty,
-						cost_price: 0,
-						pack_size: it.pack_size ?? 1,
-						ml_per_bottle: undefined,
-						batch_number: (it.batch_number ? `${it.batch_number}_FREE` : "FREE"),
-						expiry_date: it.expiry_date ? new Date(it.expiry_date) : null,
-						created_at: new Date()
+						cost_price:    0,
+						pack_size:     it.pack_size ?? 1,
+						batch_number:  it.batch_number ? `${it.batch_number}_FREE` : "FREE",
+						expiry_date:   it.expiry_date ? new Date(it.expiry_date) : null,
+						created_at:    new Date()
 					}
 				});
 				createdBatches.push(freeBatch);
 
-				// StockMovement for free qty (still increases stock)
 				await tx.stockMovement.create({
 					data: {
-						item_id: it.item_id,
-						change_qty: freeQty,
-						reason: `Purchase (free) ${purchase.invoice_no}`,
+						item_id:       it.item_id,
+						change_qty:    freeQty,
+						reason:        `Purchase (free/scheme) ${purchase.invoice_no}`,
 						movement_type: "PURCHASE",
-						ref_id: purchase.id,
-						created_by: payload.created_by ?? null,
-						created_at: new Date()
+						ref_id:        purchase.id,
+						created_by:    payload.created_by ?? null,
+						created_at:    new Date()
 					}
 				});
 			}
-		} // end loop items
+		}
 
-		// Stamp computed and provided amounts: store both by updating record
-		const finalTotal = payload.total_amount ?? computedTotal;
-		await tx.purchase.update({
-			where: { id: purchase.id },
-			data: {
-				total_amount: finalTotal
-			}
+		return tx.purchase.findUnique({
+			where:   { id: purchase.id },
+			include: { items: true, purchaseBatches: true, vendor: true, user: true, purchasePayments: true }
 		});
-
-		// Return a composed response
-		const full = await tx.purchase.findUnique({
-			where: { id: purchase.id },
-			include: {
-				items: true,
-				purchaseBatches: true,
-				vendor: true,
-				user: true
-			}
-		});
-
-		return full;
-	}); // end transaction
+	});
 
 	await audit(
 		payload.created_by ?? null,
 		AuditEvent.PURCHASE_CREATE,
-		`Created purchase ${result?.id} invoice=${payload.invoice_no}`
+		`Created purchase ${result?.id} invoice=${payload.invoice_no} status=${paymentStatus}`
 	);
 
 	return result;
 }
 
-/**
- * get purchases (list)
- */
+/* ============================================================
+   ADD PAYMENT TO EXISTING PURCHASE (pay off credit/partial)
+============================================================ */
+export async function addPurchasePayment(
+	purchaseId: number,
+	data: {
+		amount:      number;
+		method?:     "CASH" | "UPI" | "CREDITCARD" | "DEBITCARD";
+		note?:       string;
+		created_by?: number;
+	}
+) {
+	const purchase = await prisma.purchase.findUnique({
+		where:   { id: purchaseId },
+		include: { purchasePayments: true }
+	});
+
+	if (!purchase) throw new Error("Purchase not found");
+	if (purchase.payment_status === "PAID") throw new Error("Purchase is already fully paid");
+
+	const totalPaidSoFar = purchase.purchasePayments.reduce((s, p) => s + p.amount, 0);
+	const remaining      = purchase.total_amount - totalPaidSoFar;
+
+	if (data.amount <= 0)          throw new Error("Payment amount must be greater than 0");
+	if (data.amount > remaining)   throw new Error(`Amount exceeds outstanding balance of ${remaining.toFixed(2)}`);
+
+	return prisma.$transaction(async (tx) => {
+		await tx.purchasePayment.create({
+			data: {
+				purchase_id: purchaseId,
+				amount:      data.amount,
+				method:      data.method ?? "CASH",
+				note:        data.note ?? null,
+				created_by:  data.created_by ?? null
+			}
+		});
+
+		const newTotalPaid = totalPaidSoFar + data.amount;
+		const newDue       = purchase.total_amount - newTotalPaid;
+
+		let newStatus: "PAID" | "PARTIAL" | "CREDIT";
+		if (newDue <= 0.01) newStatus = "PAID";
+		else                 newStatus = "PARTIAL";
+
+		return tx.purchase.update({
+			where:   { id: purchaseId },
+			data:    { amount_paid: newTotalPaid, payment_status: newStatus },
+			include: { purchasePayments: true, vendor: true }
+		});
+	});
+}
+
+/* ============================================================
+   GET ALL PURCHASES
+============================================================ */
 export async function getAllPurchases() {
 	return prisma.purchase.findMany({
 		orderBy: { id: "desc" },
-		include: { items: true, purchaseBatches: true, vendor: true, user: true }
+		include: { items: true, purchaseBatches: true, vendor: true, user: true, purchasePayments: true }
 	});
 }
 
-/**
- * get purchase by id
- */
+/* ============================================================
+   GET PURCHASE BY ID
+============================================================ */
 export async function getPurchaseById(id: number) {
-	return prisma.purchase.findUnique({
-		where: { id },
-		include: { items: true, purchaseBatches: true, vendor: true, user: true }
+	const purchase = await prisma.purchase.findUnique({
+		where:   { id },
+		include: { items: true, purchaseBatches: true, vendor: true, user: true, purchasePayments: true }
 	});
+
+	if (!purchase) return null;
+
+	const totalPaid  = purchase.purchasePayments.reduce((s, p) => s + p.amount, 0);
+	const outstanding = purchase.total_amount - totalPaid;
+
+	return { ...purchase, outstanding };
 }
 
-
-
+/* ============================================================
+   DELETE PURCHASE
+============================================================ */
 export async function deletePurchase(purchase_id: number, user_id?: number) {
 	return prisma.$transaction(async (tx) => {
-
-		// 1. Find purchase
 		const purchase = await tx.purchase.findUnique({
-			where: { id: purchase_id },
-			include: {
-				purchaseBatches: true,
-				items: true
-			}
+			where:   { id: purchase_id },
+			include: { purchaseBatches: true, items: true }
 		});
 
 		if (!purchase) throw new Error("PURCHASE_NOT_FOUND");
 
-		// Extract all batch IDs
-		const batchIds = purchase.purchaseBatches.map(b => b.id);
+		const batchIds = purchase.purchaseBatches.map((b) => b.id);
 
-		// 2. Check if any batch is used in sale (BillItemBatch)
 		const usedCount = await tx.billItemBatch.count({
 			where: { purchase_batch_id: { in: batchIds } }
 		});
+		if (usedCount > 0) throw new Error("PURCHASE_IN_USE_CANNOT_DELETE");
 
-		if (usedCount > 0) {
-			throw new Error("PURCHASE_IN_USE_CANNOT_DELETE");
-		}
-
-		// 3. Check if any open liquor bottle exists for these batches
 		const openBottleCount = await tx.openLiquorBottle.count({
 			where: {
 				batch_id: { in: batchIds },
-				status: { in: ["OPEN", "FINISHED"] } // still active
+				status:   { in: ["OPEN", "FINISHED"] }
 			}
 		});
+		if (openBottleCount > 0) throw new Error("OPEN_BOTTLES_EXIST_CANNOT_DELETE");
 
-		if (openBottleCount > 0) {
-			throw new Error("OPEN_BOTTLES_EXIST_CANNOT_DELETE");
-		}
-
-		// 4. Rollback stock for each batch
 		for (const batch of purchase.purchaseBatches) {
 			const item = await tx.item.findUnique({ where: { id: batch.item_id } });
-
 			if (!item) continue;
 
 			const restoredStock = (item.stock ?? 0) - batch.qty_total;
-
-			if (restoredStock < 0) {
-				throw new Error("STOCK_INCONSISTENCY_ABORT");
-			}
+			if (restoredStock < 0) throw new Error("STOCK_INCONSISTENCY_ABORT");
 
 			await tx.item.update({
 				where: { id: item.id },
-				data: { stock: restoredStock }
+				data:  { stock: restoredStock }
 			});
 
-			// Delete stock movement logs created for this purchase
 			await tx.stockMovement.deleteMany({
-				where: {
-					purchaseBatchId: batch.id,
-					movement_type: "PURCHASE"
-				}
+				where: { ref_id: purchase.id, movement_type: "PURCHASE" }
 			});
 		}
 
-		// 5. Delete all batches
-		await tx.purchaseBatch.deleteMany({
-			where: { purchase_id: purchase_id }
-		});
-
-		// 6. Delete purchase items
-		await tx.purchaseItem.deleteMany({
-			where: { purchase_id: purchase_id }
-		});
-
-		// 7. Delete the purchase itself
-		await tx.purchase.delete({
-			where: { id: purchase_id }
-		});
+		// Delete payments first (FK), then batches, items, purchase
+		await tx.purchasePayment.deleteMany({ where: { purchase_id } });
+		await tx.purchaseBatch.deleteMany({   where: { purchase_id } });
+		await tx.purchaseItem.deleteMany({    where: { purchase_id } });
+		await tx.purchase.delete({            where: { id: purchase_id } });
 
 		return { message: "Purchase deleted and stock rolled back successfully." };
 	});
 }
-
