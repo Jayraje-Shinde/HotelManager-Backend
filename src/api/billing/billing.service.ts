@@ -163,12 +163,15 @@ export async function assignCustomerToBill(billId: number, customerId: number) {
 /* ============================================================
    GET ALL OPEN / CLOSED BILLS
 ============================================================ */
-export async function getAllBills() {
+export async function getAllBillsOpen() {
 	return prisma.bill.findMany({
 		where:   { status: { in: ["OPEN", "CLOSED", "CREDIT"] } },
 		include: { customer: true },
 		orderBy: { id: "desc" }
 	});
+}
+export async function getAllBills() {
+	return prisma.bill.findMany();
 }
 
 /* ============================================================

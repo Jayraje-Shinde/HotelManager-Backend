@@ -66,6 +66,13 @@ export async function assignCustomer(req: Request, res: Response) {
 
 export async function getopenbills(req: Request, res: Response) {
 	try {
+		res.json(await service.getAllBillsOpen());
+	} catch (e: any) {
+		res.status(400).json({ error: e.message });
+	}
+}
+export async function getAllbills(req: Request, res: Response) {
+	try {
 		res.json(await service.getAllBills());
 	} catch (e: any) {
 		res.status(400).json({ error: e.message });

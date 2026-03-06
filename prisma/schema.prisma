@@ -120,6 +120,8 @@ model Unit {
 
 // -----------------------------
 // ITEMS
+// ── NEW: vat_rate added for liquor items
+// ── tax_rate kept as-is (used as gst_rate for food)
 // -----------------------------
 model Item {
    id            Int     @id @default(autoincrement())
@@ -127,7 +129,8 @@ model Item {
    name          String
    category_id   Int
    unit_id       Int
-   tax_rate      Float   @default(0)
+   tax_rate      Float   @default(0)  // GST rate — food items (5, 18, 0)
+   vat_rate      Float   @default(0)  // VAT rate — liquor items (10 for Maharashtra FL3)
    selling_price Float
    stock         Float?
    is_available  Boolean @default(true)
@@ -165,8 +168,8 @@ model OpenLiquorBottle {
    breakage_reason String?
    batch_id        Int?
 
-   purchaseBatch    PurchaseBatch?  @relation(fields: [batch_id], references: [id])
-   item             Item            @relation(fields: [item_id], references: [id])
+   purchaseBatch    PurchaseBatch?    @relation(fields: [batch_id], references: [id])
+   item             Item              @relation(fields: [item_id], references: [id])
    liquorShotUsages LiquorShotUsage[]
 
    @@index([item_id])
@@ -263,7 +266,6 @@ model PurchaseBatch {
    @@index([purchase_id])
 }
 
-// Tracks individual payments made against a purchase (vendor credit settlement)
 model PurchasePayment {
    id          Int            @id @default(autoincrement())
    purchase_id Int
@@ -288,7 +290,7 @@ model Customer {
    name         String
    phone        String?
    address      String?
-   credit_limit Float?  // optional max udhar allowed
+   credit_limit Float?
 
    created_at DateTime @default(now())
    bills      Bill[]
@@ -298,6 +300,8 @@ model Customer {
 
 // -----------------------------
 // BILLING
+// ── NEW: total_cgst, total_sgst, total_vat added to Bill
+// ── NEW: 6 tax fields added to BillItem
 // -----------------------------
 model Bill {
    id          Int        @id @default(autoincrement())
@@ -306,6 +310,9 @@ model Bill {
    customer_id Int?
    total       Float      @default(0)
    discount    Float      @default(0)
+   total_cgst  Float      @default(0)  // running sum of cgst_amount across all items
+   total_sgst  Float      @default(0)  // running sum of sgst_amount across all items
+   total_vat   Float      @default(0)  // running sum of vat_amount across all items
    bill_date   DateTime   @default(now())
    status      BillStatus @default(OPEN)
 
@@ -329,6 +336,14 @@ model BillItem {
    subtotal    Float
    sale_mode   SaleMode?
    ml_per_shot Int?
+
+   // Tax snapshot — calculated at KOT close, extracted from inclusive price
+   cgst_rate   Float @default(0)  // e.g. 2.5  (half of 5% GST)
+   sgst_rate   Float @default(0)  // e.g. 2.5  (half of 5% GST)
+   cgst_amount Float @default(0)  // e.g. 7.62 extracted from ₹320 Chicken Tikka
+   sgst_amount Float @default(0)  // e.g. 7.62
+   vat_rate    Float @default(0)  // e.g. 10   (Maharashtra liquor VAT)
+   vat_amount  Float @default(0)  // e.g. 59.09 extracted from ₹650 Royal Stag
 
    bill Bill @relation(fields: [bill_id], references: [id])
    item Item @relation(fields: [item_id], references: [id])

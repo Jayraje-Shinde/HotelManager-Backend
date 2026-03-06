@@ -35,7 +35,8 @@ export async function createLiquorItem(data: CreateLiquorInput) {
 					name: itemName,
 					category_id: data.category_id,
 					unit_id: data.unit_id,
-					tax_rate: data.tax_rate,
+					gst_rate: data.gst_rate ?? 0,
+					vat_rate: data.vat_rate ?? 0,
 					selling_price: bottle.price!,
 					stock: 0,
 					code : data.code,
@@ -43,7 +44,6 @@ export async function createLiquorItem(data: CreateLiquorInput) {
 					peg_price_per_ml : data.peg_price_per_ml,
 					is_available: true,
 					manage_stock: true,
-
 					is_liquor: true,
 					ml_per_unit: bottle.ml
 				}
@@ -70,7 +70,8 @@ export async function createNonLiquorItem(data: CreateNonLiquorInput) {
 			category_id: data.category_id,
 			unit_id: data.unit_id,
 			code:data.code,
-			tax_rate: data.tax_rate,
+			gst_rate: data.gst_rate ?? 0,
+			vat_rate: 0,  // non-liquor items never have VAT
 			selling_price: data.selling_price,
 			stock: data.stock ?? 0,
 			manage_stock: false,
@@ -107,7 +108,8 @@ export async function updateItem(id: number, data: UpdateItemInput) {
 	const updateData: any = {};
 
 	if (data.name !== undefined) updateData.name = data.name.trim();
-	if (data.tax_rate !== undefined) updateData.tax_rate = data.tax_rate;
+	if (data.gst_rate !== undefined) updateData.gst_rate = data.gst_rate;
+	if (data.vat_rate !== undefined) updateData.vat_rate = data.vat_rate;
 	if (data.selling_price !== undefined) updateData.selling_price = data.selling_price;
 	if (data.stock !== undefined) updateData.stock = data.stock;
 	if (data.is_available !== undefined) updateData.is_available = data.is_available;

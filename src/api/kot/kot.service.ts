@@ -58,8 +58,7 @@ export async function getKOTbyBillid(
 				include: {
 					item: {
 						select: {
-							name: true,
-							is_liquor : true
+							name: true
 						}
 					}
 				}
@@ -194,16 +193,46 @@ export async function closeKOT(kotId: number) {
 
 			const subtotal = qty * rate;
 
+			/* -----------------------------------------------
+				TAX CALCULATION (all prices are inclusive)
+				Food  → GST extracted: gst = subtotal × rate / (100 + rate)
+				        CGST = SGST = gst / 2
+				Liquor → VAT extracted: vat = subtotal × rate / (100 + rate)
+				No-tax (rate = 0) → all zero
+			-----------------------------------------------*/
+			let cgst_rate   = 0, sgst_rate   = 0, cgst_amount = 0;
+			let sgst_amount = 0, item_vat_rate = 0, vat_amount  = 0;
+
+			if (!item.is_liquor && (item.gst_rate ?? 0) > 0) {
+				// Food / GST item
+				const gst_rate_val = item.gst_rate ?? 0;
+				const gst_amount   = subtotal * gst_rate_val / (100 + gst_rate_val);
+				cgst_rate   = gst_rate_val / 2;
+				sgst_rate   = gst_rate_val / 2;
+				cgst_amount = Math.round(gst_amount / 2 * 100) / 100;
+				sgst_amount = Math.round(gst_amount / 2 * 100) / 100;
+			} else if (item.is_liquor && (item.vat_rate ?? 0) > 0) {
+				// Liquor / VAT item
+				item_vat_rate = item.vat_rate ?? 0;
+				vat_amount    = Math.round(subtotal * item_vat_rate / (100 + item_vat_rate) * 100) / 100;
+			}
+			// else: packaged MRP items, cigarettes etc — all zero, no extraction
 
 			const billItem = await tx.billItem.create({
 				data: {
-					bill_id: bill.id,
-					item_id: item.id,
-					quantity: qty,
+					bill_id:     bill.id,
+					item_id:     item.id,
+					quantity:    qty,
 					rate,
 					subtotal,
-					sale_mode: item.is_liquor ? (ki.sale_mode ?? null) : null,
-					ml_per_shot: item.is_liquor ? (ki.ml_per_shot ?? null) : null
+					sale_mode:   item.is_liquor ? (ki.sale_mode ?? null) : null,
+					ml_per_shot: item.is_liquor ? (ki.ml_per_shot ?? null) : null,
+					cgst_rate,
+					sgst_rate,
+					cgst_amount,
+					sgst_amount,
+					vat_rate:   item_vat_rate,
+					vat_amount,
 				}
 			});
 
@@ -253,12 +282,22 @@ export async function closeKOT(kotId: number) {
 
 		const sum = await tx.billItem.aggregate({
 			where: { bill_id: bill.id },
-			_sum: { subtotal: true }
+			_sum: {
+				subtotal:    true,
+				cgst_amount: true,
+				sgst_amount: true,
+				vat_amount:  true,
+			}
 		});
 
 		await tx.bill.update({
 			where: { id: bill.id },
-			data: { total: sum._sum.subtotal ?? 0 }
+			data: {
+				total:      sum._sum.subtotal    ?? 0,
+				total_cgst: sum._sum.cgst_amount ?? 0,
+				total_sgst: sum._sum.sgst_amount ?? 0,
+				total_vat:  sum._sum.vat_amount  ?? 0,
+			}
 		});
 
 		await tx.kOT.update({
@@ -407,6 +446,9 @@ async function sellSealedBottle(
 
 /* ============================================================
 	SHOT CONSUMPTION
+	NOTE: No auto-break. If no open bottle exists for this item,
+	throws no_open_bottle so the frontend can prompt the bartender
+	to manually break a bottle via POST /api/bottle/break first.
 ============================================================ */
 async function consumeShot(
 	tx: Prisma.TransactionClient,
@@ -420,7 +462,7 @@ async function consumeShot(
 
 	while (totalMlRequired > 0) {
 
-		let bottle = await tx.openLiquorBottle.findFirst({
+		const bottle = await tx.openLiquorBottle.findFirst({
 			where: {
 				item_id: item.id,
 				status: "OPEN",
@@ -429,9 +471,9 @@ async function consumeShot(
 			orderBy: { opened_at: "asc" }
 		});
 
-		// Auto-break ONLY when shot is requested
+		// No open bottle — stop and tell the frontend to break one first
 		if (!bottle) {
-			bottle = await breakBottleInternal(tx, item, kotId);
+			throw new Error(`no_open_bottle:${item.id}:${item.name}`);
 		}
 
 		const usable = Math.min(
@@ -461,51 +503,4 @@ async function consumeShot(
 
 		totalMlRequired -= usable;
 	}
-}
-
-/* ============================================================
-	INTERNAL BREAK (AUTO FOR SHOT ONLY)
-============================================================ */
-async function breakBottleInternal(
-	tx: Prisma.TransactionClient,
-	item: any,
-	kotId: number
-) {
-	const batch = await tx.purchaseBatch.findFirst({
-		where: {
-			item_id: item.id,
-			qty_remaining: { gt: 0 }
-		},
-		orderBy: { created_at: "asc" }
-	});
-
-	if (!batch)
-		throw new Error("no_sealed_stock");
-
-	await tx.purchaseBatch.update({
-		where: { id: batch.id },
-		data: {
-			qty_remaining: batch.qty_remaining - 1
-		}
-	});
-
-	await tx.stockMovement.create({
-		data: {
-			item_id: item.id,
-			change_qty: -1,
-			movement_type: "OPEN_BOTTLE",
-			reason: `Auto break for shot via KOT ${kotId}`,
-			ref_id: kotId,
-			purchaseBatchId: batch.id
-		}
-	});
-
-	return tx.openLiquorBottle.create({
-		data: {
-			item_id: item.id,
-			ml_remaining: item.ml_per_unit,
-			status: "OPEN",
-			batch_id: batch.id
-		}
-	});
 }
