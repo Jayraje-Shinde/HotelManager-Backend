@@ -42,4 +42,17 @@ router.get("/stock-variance",     auth, roles, ctrl.stockVariance);
 // GET /api/excise/purchase-register?from=2026-03-01&to=2026-03-31&vendor_id=1
 router.get("/purchase-register",  auth, roles, ctrl.purchaseRegisterExcise);
 
+
+// FLR-3: Total account register (daily aggregate across all IMFL brands)
+// GET /api/excise/flr3?month=2026-03
+router.get("/flr3",               auth, roles, ctrl.flr3Report);
+
+// BEER-A: Beer-only stock register (separate from IMFL as required by Maharashtra excise)
+// GET /api/excise/beer-a?month=2026-03
+router.get("/beer-a",             auth, roles, ctrl.beerAReport);
+
+// VAT & GST Liability Report (for CA/accountant — uses stored tax fields)
+// GET /api/excise/vat-liability?month=2026-03
+router.get("/vat-liability",      auth, roles, ctrl.vatLiability);
+
 export default router;

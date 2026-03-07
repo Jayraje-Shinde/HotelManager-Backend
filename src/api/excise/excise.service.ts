@@ -642,3 +642,517 @@ export async function excisePurchaseRegister(from?: string, to?: string, vendorI
 		purchases: rows
 	};
 }
+
+// ============================================================
+// FLR-3 — TOTAL ACCOUNT REGISTER (Daily aggregate, monthly view)
+//
+// Maharashtra Excise: FL3 permit rooms must maintain FLR-3
+// alongside FLR-3/A. While FLR-3/A shows one row per brand
+// per day, FLR-3 is the DAILY AGGREGATE — all IMFL brands
+// combined into a single row per day. Officers use this to
+// verify total movement at a glance before drilling into brands.
+//
+// Source: DayLiquorSnapshot (already computed at day-end close)
+// ============================================================
+export async function flr3(yearMonth: string) {
+	const { start, end } = monthRange(yearMonth);
+
+	const dayClosings = await prisma.dayClosing.findMany({
+		where:   { business_date: { gte: start, lte: end }, status: "CLOSED" },
+		include: {
+			liquorSnapshots: {
+				include: {
+					item: {
+						select: {
+							id: true, name: true, ml_per_unit: true,
+							category: { select: { name: true } }
+						}
+					}
+				}
+			}
+		},
+		orderBy: { business_date: "asc" }
+	});
+
+	const dailyRows: any[] = [];
+	let runningClosingBottles = 0;
+	let runningClosingMl      = 0;
+
+	for (const dc of dayClosings) {
+		// Separate IMFL from Beer for the daily aggregate
+		// Beer is identified by category name or item name containing "beer"
+		const imflSnapshots = dc.liquorSnapshots.filter((s) => {
+			const catName  = s.item.category?.name?.toLowerCase() ?? "";
+			const itemName = s.item.name?.toLowerCase() ?? "";
+			return !catName.includes("beer") && !itemName.includes("beer");
+		});
+
+		if (imflSnapshots.length === 0) continue;
+
+		const dayTotal = imflSnapshots.reduce((acc, s) => {
+			const mlPerUnit          = s.item.ml_per_unit ?? 0;
+			const shotsBottleEquiv   = mlPerUnit ? s.shots_ml_sold / mlPerUnit : 0;
+			const closingBottles     = Math.max(0,
+				Number(s.opening_bottles) + Number(s.purchased_bottles)
+				- Number(s.sealed_sold) - Number(s.broken_bottles) - shotsBottleEquiv
+			);
+
+			acc.opening_bottles   += Number(s.opening_bottles);
+			acc.purchased_bottles += Number(s.purchased_bottles);
+			acc.sealed_sold       += Number(s.sealed_sold);
+			acc.shots_ml_sold     += Number(s.shots_ml_sold);
+			acc.broken_bottles    += Number(s.broken_bottles);
+			acc.closing_bottles   += closingBottles;
+			acc.open_bottles_ml   += Number(s.open_bottles_ml);
+			acc.variance_ml       += Number(s.variance_ml);
+			acc.brand_count       += 1;
+			return acc;
+		}, {
+			opening_bottles:   0,
+			purchased_bottles: 0,
+			sealed_sold:       0,
+			shots_ml_sold:     0,
+			broken_bottles:    0,
+			closing_bottles:   0,
+			open_bottles_ml:   0,
+			variance_ml:       0,
+			brand_count:       0
+		});
+
+		runningClosingBottles = +dayTotal.closing_bottles.toFixed(3);
+		runningClosingMl      = +dayTotal.open_bottles_ml.toFixed(2);
+
+		dailyRows.push({
+			date:                dc.business_date,
+			opening_bottles:     +dayTotal.opening_bottles.toFixed(3),
+			purchased_bottles:   +dayTotal.purchased_bottles.toFixed(3),
+			sealed_sold:         +dayTotal.sealed_sold.toFixed(3),
+			shots_ml_sold:       +dayTotal.shots_ml_sold.toFixed(2),
+			broken_bottles:      +dayTotal.broken_bottles.toFixed(3),
+			closing_bottles:     runningClosingBottles,
+			open_bottles_ml:     runningClosingMl,
+			variance_ml:         +dayTotal.variance_ml.toFixed(2),
+			active_brands:       dayTotal.brand_count
+		});
+	}
+
+	// Monthly aggregate totals
+	const monthTotals = dailyRows.reduce((acc, r) => {
+		acc.total_purchased   += r.purchased_bottles;
+		acc.total_sealed_sold += r.sealed_sold;
+		acc.total_shots_ml    += r.shots_ml_sold;
+		acc.total_broken      += r.broken_bottles;
+		acc.total_variance_ml += r.variance_ml;
+		return acc;
+	}, {
+		total_purchased: 0, total_sealed_sold: 0,
+		total_shots_ml: 0,  total_broken: 0, total_variance_ml: 0
+	});
+
+	return {
+		register:      "FLR-3",
+		month:         yearMonth,
+		report_name:   "Total Account Register (IMFL Daily Aggregate)",
+		note:          "One row per day — all IMFL brands combined. Beer tracked separately in BEER-A register.",
+		generated_at:  new Date().toISOString(),
+		days_closed:   dailyRows.length,
+		monthly_totals: {
+			total_purchased_bottles:  +monthTotals.total_purchased.toFixed(3),
+			total_sealed_sold:        +monthTotals.total_sealed_sold.toFixed(3),
+			total_shots_ml_sold:      +monthTotals.total_shots_ml.toFixed(2),
+			total_broken_bottles:     +monthTotals.total_broken.toFixed(3),
+			total_variance_ml:        +monthTotals.total_variance_ml.toFixed(2),
+			closing_bottles_eom:      runningClosingBottles,
+			closing_open_bottles_ml:  runningClosingMl
+		},
+		daily_entries: dailyRows
+	};
+}
+
+// ============================================================
+// BEER-A — BEER STOCK REGISTER
+//
+// Maharashtra Excise requires a SEPARATE register for beer
+// (including draught beer, cans, and bottled beer) under FL3.
+// BEER-A mirrors the FLR-1/A structure but covers ONLY beer
+// items. Beer is identified by category name or item name
+// containing "beer" (case-insensitive).
+//
+// If no beer items exist in your system, returns an empty
+// register with a note — not an error.
+// ============================================================
+export async function beerA(yearMonth: string) {
+	const { start, end } = monthRange(yearMonth);
+
+	// Identify beer items by category or name
+	const beerItems = await prisma.item.findMany({
+		where: {
+			is_liquor: true,
+			OR: [
+				{ name:     { contains: "beer", mode: "insensitive" } },
+				{ category: { name: { contains: "beer", mode: "insensitive" } } }
+			]
+		},
+		include: { category: { select: { name: true } } },
+		orderBy: { name: "asc" }
+	});
+
+	if (beerItems.length === 0) {
+		return {
+			register:     "BEER-A",
+			month:        yearMonth,
+			report_name:  "Beer Stock Register",
+			generated_at: new Date().toISOString(),
+			note:         "No beer items found. To enable this register, ensure beer items have 'beer' in their name or are in a category named 'Beer'.",
+			beer_items:   [],
+			daily_entries: []
+		};
+	}
+
+	const beerItemIds = beerItems.map((i) => i.id);
+
+	// Pull day closings for the month
+	const dayClosings = await prisma.dayClosing.findMany({
+		where:   { business_date: { gte: start, lte: end }, status: "CLOSED" },
+		include: {
+			liquorSnapshots: {
+				where:   { item_id: { in: beerItemIds } },
+				include: { item: { select: { id: true, name: true, ml_per_unit: true } } }
+			}
+		},
+		orderBy: { business_date: "asc" }
+	});
+
+	// Per-brand monthly aggregates
+	const brandMap = new Map<number, any>();
+
+	for (const item of beerItems) {
+		brandMap.set(item.id, {
+			item_id:           item.id,
+			brand_name:        item.name,
+			ml_per_unit:       item.ml_per_unit,
+			category:          item.category?.name,
+			opening_bottles:   0,  // first day's opening
+			purchased_bottles: 0,
+			sealed_sold:       0,
+			shots_ml_sold:     0,
+			broken_bottles:    0,
+			closing_bottles:   0,
+			open_bottles_ml:   0,
+			total_variance_ml: 0,
+			first_seen:        false
+		});
+	}
+
+	const dailyRows: any[] = [];
+
+	for (const dc of dayClosings) {
+		if (dc.liquorSnapshots.length === 0) continue;
+
+		const dayEntries: any[] = [];
+
+		for (const s of dc.liquorSnapshots) {
+			const mlPerUnit        = s.item.ml_per_unit ?? 0;
+			const shotsBottleEquiv = mlPerUnit ? Number(s.shots_ml_sold) / mlPerUnit : 0;
+			const closingBottles   = Math.max(0,
+				Number(s.opening_bottles) + Number(s.purchased_bottles)
+				- Number(s.sealed_sold) - Number(s.broken_bottles) - shotsBottleEquiv
+			);
+
+			// Accumulate brand totals
+			const brand = brandMap.get(s.item_id);
+			if (brand) {
+				if (!brand.first_seen) {
+					brand.opening_bottles = Number(s.opening_bottles);
+					brand.first_seen      = true;
+				}
+				brand.purchased_bottles += Number(s.purchased_bottles);
+				brand.sealed_sold       += Number(s.sealed_sold);
+				brand.shots_ml_sold     += Number(s.shots_ml_sold);
+				brand.broken_bottles    += Number(s.broken_bottles);
+				brand.closing_bottles    = +closingBottles.toFixed(3);
+				brand.open_bottles_ml    = Number(s.open_bottles_ml);
+				brand.total_variance_ml += Number(s.variance_ml);
+			}
+
+			dayEntries.push({
+				brand_name:       s.item.name,
+				item_id:          s.item_id,
+				ml_per_unit:      s.item.ml_per_unit,
+				opening_bottles:  +Number(s.opening_bottles).toFixed(3),
+				purchased:        +Number(s.purchased_bottles).toFixed(3),
+				sealed_sold:      +Number(s.sealed_sold).toFixed(3),
+				shots_ml_sold:    +Number(s.shots_ml_sold).toFixed(2),
+				broken_bottles:   +Number(s.broken_bottles).toFixed(3),
+				closing_bottles:  +closingBottles.toFixed(3),
+				open_bottles_ml:  +Number(s.open_bottles_ml).toFixed(2),
+				variance_ml:      +Number(s.variance_ml).toFixed(2)
+			});
+		}
+
+		dailyRows.push({
+			date:    dc.business_date,
+			brands:  dayEntries
+		});
+	}
+
+	const brandSummaries = [...brandMap.values()]
+		.filter(b => b.purchased_bottles > 0 || b.sealed_sold > 0 || b.opening_bottles > 0)
+		.map(b => ({
+			...b,
+			purchased_bottles: +b.purchased_bottles.toFixed(3),
+			sealed_sold:       +b.sealed_sold.toFixed(3),
+			shots_ml_sold:     +b.shots_ml_sold.toFixed(2),
+			broken_bottles:    +b.broken_bottles.toFixed(3),
+			closing_bottles:   +b.closing_bottles.toFixed(3),
+			total_variance_ml: +b.total_variance_ml.toFixed(2),
+			first_seen:        undefined  // clean up internal flag
+		}));
+
+	return {
+		register:      "BEER-A",
+		month:         yearMonth,
+		report_name:   "Beer Stock Register",
+		generated_at:  new Date().toISOString(),
+		note:          "Covers all items identified as beer by name or category. IMFL tracked separately in FLR-1/A.",
+		beer_brands:   beerItems.map(i => ({ id: i.id, name: i.name, ml_per_unit: i.ml_per_unit })),
+		brand_summary: brandSummaries,
+		daily_entries: dailyRows
+	};
+}
+
+// ============================================================
+// VAT LIABILITY REPORT — Monthly, for CA / Accountant
+//
+// Uses the stored cgst_amount, sgst_amount, vat_amount fields
+// on BillItem (snapshotted at KOT close time — zero recalculation).
+//
+// Three sections:
+//   1. Monthly summary  — total tax collected by type
+//   2. Weekly breakdown — week-by-week tax liability
+//   3. Rate-wise table  — GST @ 5%, GST @ 18% etc. separately
+//
+// Important for CA:
+//   - GST (CGST + SGST) applies to FOOD only
+//   - VAT applies to LIQUOR only (Maharashtra FL3 = 10%)
+//   - Prices are INCLUSIVE — tax shown here was extracted,
+//     not charged on top. Customer always paid bill.total.
+//   - File GSTR-1 monthly for food GST liability.
+//   - VAT is deposited separately to Maharashtra excise dept.
+// ============================================================
+export async function vatLiabilityReport(yearMonth: string) {
+	const { start, end } = monthRange(yearMonth);
+
+	// Pull all paid/credit bills for the month with their items
+	const bills = await prisma.bill.findMany({
+		where: {
+			bill_date: { gte: start, lte: end },
+			status:    { in: ["PAID", "CREDIT"] }
+		},
+		include: {
+			items: {
+				include: {
+					item: {
+						select: {
+							id: true, name: true, is_liquor: true,
+							tax_rate: true, vat_rate: true
+						}
+					}
+				}
+			},
+			payments: true
+		},
+		orderBy: { bill_date: "asc" }
+	});
+
+	// ── Monthly aggregate ──────────────────────────────────────
+	let total_food_sales      = 0;
+	let total_liquor_sales    = 0;
+	let total_cgst_collected  = 0;
+	let total_sgst_collected  = 0;
+	let total_vat_collected   = 0;
+
+	// Rate-wise GST breakdown (for GSTR-1 filing)
+	const gstRateMap = new Map<string, {
+		rate: number; taxable_value: number;
+		cgst: number; sgst: number; total_tax: number; bill_count: number
+	}>();
+
+	// Weekly breakdown
+	const weekMap = new Map<string, {
+		week_label:         string;
+		week_start:         Date;
+		week_end:           Date;
+		food_sales:         number;
+		liquor_sales:       number;
+		cgst_collected:     number;
+		sgst_collected:     number;
+		vat_collected:      number;
+		bills_count:        number;
+	}>();
+
+	// Bill-level detail (for CA to cross-check)
+	const billDetails: any[] = [];
+
+	for (const bill of bills) {
+		let bill_food_sales    = 0;
+		let bill_liquor_sales  = 0;
+		let bill_cgst          = 0;
+		let bill_sgst          = 0;
+		let bill_vat           = 0;
+
+		for (const bi of bill.items) {
+			const subtotal    = Number(bi.subtotal);
+			const cgst_amount = Number(bi.cgst_amount ?? 0);
+			const sgst_amount = Number(bi.sgst_amount ?? 0);
+			const vat_amount  = Number(bi.vat_amount  ?? 0);
+			const cgst_rate   = Number(bi.cgst_rate   ?? 0);
+			const sgst_rate   = Number(bi.sgst_rate   ?? 0);
+
+			if (bi.item.is_liquor) {
+				bill_liquor_sales  += subtotal;
+				bill_vat           += vat_amount;
+				total_liquor_sales += subtotal;
+				total_vat_collected += vat_amount;
+			} else {
+				bill_food_sales    += subtotal;
+				bill_cgst          += cgst_amount;
+				bill_sgst          += sgst_amount;
+				total_food_sales   += subtotal;
+				total_cgst_collected += cgst_amount;
+				total_sgst_collected += sgst_amount;
+
+				// Rate-wise GST grouping
+				const gstRate    = (cgst_rate + sgst_rate);   // e.g. 5 for 5% GST
+				const rateKey    = `GST_${gstRate}`;
+				const taxableVal = subtotal - cgst_amount - sgst_amount;
+
+				if (!gstRateMap.has(rateKey)) {
+					gstRateMap.set(rateKey, {
+						rate:          gstRate,
+						taxable_value: 0,
+						cgst:          0,
+						sgst:          0,
+						total_tax:     0,
+						bill_count:    0
+					});
+				}
+				const rateEntry = gstRateMap.get(rateKey)!;
+				rateEntry.taxable_value += taxableVal;
+				rateEntry.cgst          += cgst_amount;
+				rateEntry.sgst          += sgst_amount;
+				rateEntry.total_tax     += cgst_amount + sgst_amount;
+				rateEntry.bill_count    += 1;
+			}
+		}
+
+		// Week label: Week 1, Week 2 etc. within the month
+		const billDate   = new Date(bill.bill_date);
+		const dayOfMonth = billDate.getDate();
+		const weekNo     = Math.ceil(dayOfMonth / 7);
+		const weekStart  = new Date(billDate);
+		weekStart.setDate(dayOfMonth - ((dayOfMonth - 1) % 7));
+		const weekEnd    = new Date(weekStart);
+		weekEnd.setDate(weekStart.getDate() + 6);
+		const weekKey    = `W${weekNo}`;
+
+		if (!weekMap.has(weekKey)) {
+			weekMap.set(weekKey, {
+				week_label:     `Week ${weekNo} (${weekStart.toISOString().slice(0,10)} – ${weekEnd.toISOString().slice(0,10)})`,
+				week_start:     weekStart,
+				week_end:       weekEnd,
+				food_sales:     0,
+				liquor_sales:   0,
+				cgst_collected: 0,
+				sgst_collected: 0,
+				vat_collected:  0,
+				bills_count:    0
+			});
+		}
+		const week = weekMap.get(weekKey)!;
+		week.food_sales     += bill_food_sales;
+		week.liquor_sales   += bill_liquor_sales;
+		week.cgst_collected += bill_cgst;
+		week.sgst_collected += bill_sgst;
+		week.vat_collected  += bill_vat;
+		week.bills_count    += 1;
+
+		const totalPaid = bill.payments.reduce((s, p) => s + Number(p.amount), 0);
+		billDetails.push({
+			bill_id:       bill.id,
+			bill_date:     bill.bill_date,
+			table_no:      bill.table_no,
+			gross_total:   +Number(bill.total).toFixed(2),
+			discount:      +Number(bill.discount ?? 0).toFixed(2),
+			net_payable:   +(Number(bill.total) - Number(bill.discount ?? 0)).toFixed(2),
+			amount_paid:   +totalPaid.toFixed(2),
+			food_sales:    +bill_food_sales.toFixed(2),
+			liquor_sales:  +bill_liquor_sales.toFixed(2),
+			cgst_amount:   +bill_cgst.toFixed(2),
+			sgst_amount:   +bill_sgst.toFixed(2),
+			vat_amount:    +bill_vat.toFixed(2),
+			status:        bill.status
+		});
+	}
+
+	// Round all aggregates
+	const summary = {
+		month:                  yearMonth,
+		total_bills:            bills.length,
+
+		// Food / GST
+		food_gross_sales:       +total_food_sales.toFixed(2),
+		food_cgst_collected:    +total_cgst_collected.toFixed(2),
+		food_sgst_collected:    +total_sgst_collected.toFixed(2),
+		food_total_gst:         +(total_cgst_collected + total_sgst_collected).toFixed(2),
+		food_taxable_value:     +(total_food_sales - total_cgst_collected - total_sgst_collected).toFixed(2),
+
+		// Liquor / VAT
+		liquor_gross_sales:     +total_liquor_sales.toFixed(2),
+		liquor_vat_collected:   +total_vat_collected.toFixed(2),
+		liquor_taxable_value:   +(total_liquor_sales - total_vat_collected).toFixed(2),
+
+		// Grand
+		grand_total_sales:      +(total_food_sales + total_liquor_sales).toFixed(2),
+		total_tax_collected:    +(total_cgst_collected + total_sgst_collected + total_vat_collected).toFixed(2),
+	};
+
+	const gstRateBreakdown = [...gstRateMap.values()]
+		.sort((a, b) => a.rate - b.rate)
+		.map(r => ({
+			gst_rate:      `${r.rate}%`,
+			taxable_value: +r.taxable_value.toFixed(2),
+			cgst_amount:   +r.cgst.toFixed(2),
+			sgst_amount:   +r.sgst.toFixed(2),
+			total_gst:     +r.total_tax.toFixed(2),
+		}));
+
+	const weeklyBreakdown = [...weekMap.values()]
+		.sort((a, b) => a.week_start.getTime() - b.week_start.getTime())
+		.map(w => ({
+			week_label:         w.week_label,
+			bills_count:        w.bills_count,
+			food_sales:         +w.food_sales.toFixed(2),
+			liquor_sales:       +w.liquor_sales.toFixed(2),
+			cgst_collected:     +w.cgst_collected.toFixed(2),
+			sgst_collected:     +w.sgst_collected.toFixed(2),
+			vat_collected:      +w.vat_collected.toFixed(2),
+			total_tax:          +(w.cgst_collected + w.sgst_collected + w.vat_collected).toFixed(2)
+		}));
+
+	return {
+		report_name:   "VAT & GST Liability Report",
+		month:         yearMonth,
+		generated_at:  new Date().toISOString(),
+		note: [
+			"All amounts are extracted from inclusive prices — customers were never charged extra.",
+			"Food sales are subject to GST. File GSTR-1 monthly for CGST + SGST liability.",
+			"Liquor sales are subject to Maharashtra State VAT (FL3 rate: 10%). Deposit to excise dept separately.",
+			"Items with 0% tax rate (packaged MRP items) are included in food_gross_sales but not in taxable_value."
+		],
+		summary,
+		gst_rate_breakdown: gstRateBreakdown,
+		weekly_breakdown:   weeklyBreakdown,
+		bill_details:       billDetails
+	};
+}

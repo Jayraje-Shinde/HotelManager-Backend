@@ -18,7 +18,8 @@ import billingRoutes from './api/billing/billing.route';
 import authRoutes from './api/auth/auth.route';
 import reportsRoutes from './api/reports/report.route';
 import dayendRoutes from './api/dayend/dayend.route';
-import customerRouter from "./api/customer/customer.route";
+import customerRoutes from "./api/customer/customer.route";
+import exciseRoutes from './api/excise/excise.route'
 
 
 //testing middleware just for dev
@@ -49,6 +50,7 @@ app.use("/api/kots", kotrRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/report", reportsRoutes);
 app.use('/api/dayend', dayendRoutes);
-app.use("/api/customer", customerRouter);
+app.use("/api/customer", customerRoutes);
+app.use("/api/excise", exciseRoutes);
 
 export default app;

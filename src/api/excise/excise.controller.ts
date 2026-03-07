@@ -80,3 +80,30 @@ export async function purchaseRegisterExcise(req: Request, res: Response) {
 		res.status(400).json({ error: e.message });
 	}
 }
+
+export async function flr3Report(req: Request, res: Response) {
+	try {
+		const month = (req.query.month as string) ?? new Date().toISOString().slice(0, 7);
+		res.json(await service.flr3(month));
+	} catch (e: any) {
+		res.status(400).json({ error: e.message });
+	}
+}
+
+export async function beerAReport(req: Request, res: Response) {
+	try {
+		const month = (req.query.month as string) ?? new Date().toISOString().slice(0, 7);
+		res.json(await service.beerA(month));
+	} catch (e: any) {
+		res.status(400).json({ error: e.message });
+	}
+}
+
+export async function vatLiability(req: Request, res: Response) {
+	try {
+		const month = (req.query.month as string) ?? new Date().toISOString().slice(0, 7);
+		res.json(await service.vatLiabilityReport(month));
+	} catch (e: any) {
+		res.status(400).json({ error: e.message });
+	}
+}

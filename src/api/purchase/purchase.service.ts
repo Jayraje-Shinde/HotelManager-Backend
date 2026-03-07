@@ -232,7 +232,11 @@ export async function getAllPurchases() {
 export async function getPurchaseById(id: number) {
 	const purchase = await prisma.purchase.findUnique({
 		where:   { id },
-		include: { items: true, purchaseBatches: true, vendor: true, user: true, purchasePayments: true }
+		include: { purchaseBatches: true, vendor: true, user: true, purchasePayments: true, items : {
+			include : {
+				item : true
+			}
+		} }
 	});
 
 	if (!purchase) return null;
