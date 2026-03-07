@@ -29,10 +29,15 @@ export async function closeBill(req: Request, res: Response) {
 
 export async function pay(req: Request, res: Response) {
 	try {
-		const ip     = req.ip ?? null;
-		const userId = req.user?.id ?? null;
-		const result = await service.addPaymentToBill(Number(req.params.id), req.body.payments);
-		const total  = (req.body.payments ?? []).reduce((s: number, p: any) => s + Number(p.amount), 0);
+		const ip       = req.ip ?? null;
+		const userId   = req.user?.id ?? null;
+		const { payments, discount } = req.body;
+		const result   = await service.addPaymentToBill(
+			Number(req.params.id),
+			payments,
+			discount !== undefined ? Number(discount) : undefined
+		);
+		const total = (payments ?? []).reduce((s: number, p: any) => s + Number(p.amount), 0);
 		await audit(userId, AuditEvent.BILL_PAY, `Bill #${req.params.id} payment ₹${total}`, ip);
 		res.json(result);
 	} catch (e: any) {
@@ -71,6 +76,7 @@ export async function getopenbills(req: Request, res: Response) {
 		res.status(400).json({ error: e.message });
 	}
 }
+
 export async function getAllbills(req: Request, res: Response) {
 	try {
 		res.json(await service.getAllBills());

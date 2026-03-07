@@ -59,10 +59,15 @@ export async function closeBill(billId: number) {
 
 /* ============================================================
    ADD PAYMENT TO BILL (supports partial / credit / udhar)
+   - discount is optional flat rupee amount
+   - if provided, discount + payments are atomic — both succeed
+     or both roll back. eliminates the race condition where
+     discount saved but payment failed (or vice versa).
 ============================================================ */
 export async function addPaymentToBill(
 	billId:   number,
-	payments: { method: any; amount: number }[]
+	payments: { method: any; amount: number }[],
+	discount?: number
 ) {
 	return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
 		const bill = await tx.bill.findUnique({
@@ -74,9 +79,24 @@ export async function addPaymentToBill(
 		if (bill.status !== "CLOSED" && bill.status !== "CREDIT")
 			throw new Error("bill_not_closed");
 
-		const existing = bill.payments.reduce((s, p) => s + p.amount, 0);
-		const incoming = payments.reduce((s, p) => s + p.amount, 0);
-		const billTotal = bill.total - (bill.discount ?? 0);
+		// Apply discount atomically if provided
+		let effectiveDiscount = bill.discount ?? 0;
+
+		if (discount !== undefined) {
+			if (discount < 0)          throw new Error("invalid_discount");
+			if (discount > bill.total) throw new Error("discount_exceeds_total");
+
+			effectiveDiscount = discount;
+
+			await tx.bill.update({
+				where: { id: billId },
+				data:  { discount: effectiveDiscount }
+			});
+		}
+
+		const billTotal  = bill.total - effectiveDiscount;
+		const existing   = bill.payments.reduce((s, p) => s + p.amount, 0);
+		const incoming   = payments.reduce((s, p) => s + p.amount, 0);
 
 		if (existing + incoming > billTotal + EPSILON)
 			throw new Error("overpayment");
@@ -87,7 +107,7 @@ export async function addPaymentToBill(
 			});
 		}
 
-		const totalPaid = existing + incoming;
+		const totalPaid   = existing + incoming;
 		const isFullyPaid = totalPaid >= billTotal - EPSILON;
 
 		if (isFullyPaid) {
@@ -103,6 +123,9 @@ export async function addPaymentToBill(
 
 		return {
 			success:     true,
+			total:       bill.total,
+			discount:    effectiveDiscount,
+			payable:     billTotal,
 			total_paid:  totalPaid,
 			outstanding: Math.max(0, billTotal - totalPaid),
 			fully_paid:  isFullyPaid
@@ -170,8 +193,13 @@ export async function getAllBillsOpen() {
 		orderBy: { id: "desc" }
 	});
 }
+
 export async function getAllBills() {
-	return prisma.bill.findMany();
+	return prisma.bill.findMany({
+		include : {
+			payments : true
+		}
+	});
 }
 
 /* ============================================================
